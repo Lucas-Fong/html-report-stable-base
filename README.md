@@ -1,30 +1,110 @@
 # html-report-stable-base
 
-Codex skill for generating editable HTML reports in two modes:
+Codex skill for building stable, editable HTML reports from supplied content or existing HTML. It supports long scrolling reports and fixed 16:9 HTML decks, with a shared style drawer, per-element editing, browser QA, and click-triggered exports.
 
-- `single-page`: a long scrolling HTML report with section navigation and click-triggered HTML, PNG, and PDF export.
-- `ppt`: a fixed 16:9 HTML deck with editable objects and click-triggered HTML, PDF, and PPTX export.
+## Visual Examples
 
-The skill keeps a stable editing shell with a right-side style drawer, global typography controls, per-element styling, section or slide navigation, and browser QA scripts.
+### Single-Page Mode
 
-## Structure
+![Single-page editable report shell](assets/examples/single-page-example.svg)
 
-- `SKILL.md`: skill contract and workflow.
-- `assets/template/`: single-page and PPT HTML templates plus shared editor assets.
-- `scripts/`: builders, validators, QA checks, preview server, and export utilities.
-- `fixtures/`: small contract fixtures for editor acceptance checks.
-- `references/`: supporting implementation contracts.
+Use `single-page` when the report should read as a long, vertically scrolling page with section navigation, responsive width, auto height, and `HTML / 图片 / PDF` export.
 
-## Common Commands
+### PPT Mode
+
+![PPT editable report shell](assets/examples/ppt-example.svg)
+
+Use `ppt` when the output should behave like a slide deck with a fixed `1440 × 810` canvas, page navigation, stable object geometry, and `HTML / PDF / PPTX` export.
+
+## What This Skill Provides
+
+- A right-side editable style drawer with global typography and per-element controls.
+- Independent editing for text, shapes, charts, and images.
+- HEX color text inputs paired with native color swatches.
+- Single-page section navigation or PPT slide navigation.
+- ECharts-friendly chart resizing.
+- Standalone HTML export that can keep editing controls or export view-only output.
+- Local preview service for high-fidelity image, PDF, and PPTX generation after user action.
+
+## Quick Start
+
+Create a model JSON with an explicit `mode`, then build with the matching template.
 
 ```bash
-python scripts/check_html_report.py <output>/index.html
-node scripts/qa_html_report.mjs <output>/index.html
-node scripts/qa_editor_enhancements.mjs <output>/index.html
-node scripts/qa_preview_export.mjs <output>/index.html
-node scripts/start_html_report_preview.mjs <output> 5300
+python scripts/build_html_report_from_model.py model.json \
+  --template assets/template/html-report-single-base.html \
+  --out output/index.html
 ```
+
+Run the checks:
+
+```bash
+python scripts/check_html_report.py output/index.html
+node scripts/qa_html_report.mjs output/index.html
+node scripts/qa_editor_enhancements.mjs output/index.html
+node scripts/qa_preview_export.mjs output/index.html
+```
+
+Start local preview and click export buttons in the browser:
+
+```bash
+node scripts/start_html_report_preview.mjs output 5300
+```
+
+## Minimal Models
+
+### Single-Page
+
+```json
+{
+  "mode": "single-page",
+  "title": "Market Audit",
+  "sections": [
+    {
+      "id": "summary",
+      "title": "Executive Summary",
+      "html": "<h1 class=\"editable\" data-editable-element=\"text\">Executive Summary</h1><p class=\"editable\" data-editable-element=\"text\">...</p>"
+    }
+  ]
+}
+```
+
+### PPT
+
+```json
+{
+  "mode": "ppt",
+  "title": "Strategy Deck",
+  "slides": [
+    {
+      "title": "Page 1",
+      "html": "<h1 class=\"editable\" data-editable-element=\"text\">Page 1</h1>",
+      "objects": []
+    }
+  ]
+}
+```
+
+## Editable Element Markup
+
+Every independently editable element must declare exactly one type.
+
+```html
+<h2 class="editable" data-editable-element="text">Title</h2>
+<div data-editable-element="shape">Card</div>
+<div class="chart" data-editable-element="chart"></div>
+<img data-editable-element="image" src="..." alt="...">
+```
+
+## Repository Structure
+
+- `SKILL.md`: full skill contract and workflow.
+- `assets/examples/`: README and skill documentation visuals.
+- `assets/template/`: single-page and PPT templates plus shared editor assets.
+- `fixtures/`: acceptance fixtures for editor behavior.
+- `references/`: supporting contracts, including drawer and element rules.
+- `scripts/`: builder, validators, QA checks, preview server, and export utilities.
 
 ## Versioning Notes
 
-Track source files, templates, fixtures, and lockfiles. Do not commit `node_modules/`, generated exports, or local report outputs.
+Track source files, templates, fixtures, examples, scripts, references, and lockfiles. Do not commit `node_modules/`, generated exports, local report outputs, or temporary QA artifacts.
