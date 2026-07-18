@@ -53,6 +53,33 @@ Start local preview and click export buttons in the browser:
 node scripts/start_html_report_preview.mjs output 5300
 ```
 
+## Install From GitHub
+
+This repository is public, so other users can install it by giving Codex the GitHub URL:
+
+```text
+$skill-installer install from https://github.com/Lucas-Fong/html-report-stable-base
+```
+
+If the installer asks for a repo path, use the repository root because `SKILL.md` lives at the top level.
+
+Public GitHub search can also find this repository through topics such as `codex`, `codex-skills`, `openai-codex`, `agent-skills`, `html-report`, and `report-generator`.
+
+## Discovery In Codex
+
+Public GitHub visibility does not automatically place a skill into Codex's curated skill list. For broad discoverability inside Codex, package the skill as a plugin and add that plugin to a marketplace source. A plugin can bundle this skill with templates, assets, scripts, MCP servers, or connectors, and users can browse/install plugins from supported Codex surfaces.
+
+Short-term distribution:
+
+- Share this GitHub URL and ask users to install it with `$skill-installer`.
+- Keep the README, topics, and examples clear so GitHub search works.
+
+Long-term distribution:
+
+- Create a plugin wrapper with `.codex-plugin/plugin.json`.
+- Place this skill under `skills/html-report-stable-base/`.
+- Add the plugin to a marketplace source for team or public discovery.
+
 ## Minimal Models
 
 ### Single-Page

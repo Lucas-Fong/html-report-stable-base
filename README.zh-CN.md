@@ -52,6 +52,36 @@ node scripts/qa_preview_export.mjs output/index.html
 node scripts/start_html_report_preview.mjs output 5300
 ```
 
+## 从 GitHub 安装
+
+这个仓库已经公开，其他用户可以把 GitHub 地址交给 Codex 安装：
+
+```text
+$skill-installer install from https://github.com/Lucas-Fong/html-report-stable-base
+```
+
+如果安装器要求填写 repo path，使用仓库根目录即可，因为 `SKILL.md` 就在根目录。
+
+为了提高 GitHub 搜索命中率，仓库已设置 `codex`、`codex-skills`、`openai-codex`、`agent-skills`、`html-report`、`report-generator` 等 topic。
+
+## 如何被 Codex 发现
+
+公开 GitHub 仓库不会自动进入 Codex 的 curated skill 列表。短期做法是分享 GitHub URL，让别人通过 `$skill-installer` 安装。
+
+如果希望别人能在 Codex 里像搜索插件一样发现它，建议把这个 skill 包装成 plugin，并加入 marketplace source。plugin 可以把 skill、模板、脚本、图片、MCP server 或 connector 一起打包，适合团队或公开分发。
+
+短期分发：
+
+- 分享这个 GitHub 仓库地址。
+- 让用户通过 `$skill-installer` 从 GitHub 安装。
+- 保持 README、topic 和示例图清晰，方便 GitHub 搜索。
+
+长期分发：
+
+- 新建 plugin 外壳，包含 `.codex-plugin/plugin.json`。
+- 把这个 skill 放到 `skills/html-report-stable-base/`。
+- 把 plugin 加入个人、团队或公开 marketplace。
+
 ## 最小模型示例
 
 ### 单页模式
@@ -111,4 +141,3 @@ node scripts/start_html_report_preview.mjs output 5300
 建议纳入版本管理的内容：源文件、模板、fixtures、示例图、脚本、references 和 lockfile。
 
 不要提交：`node_modules/`、生成的导出文件、本地报告输出、临时 QA 产物。
-
