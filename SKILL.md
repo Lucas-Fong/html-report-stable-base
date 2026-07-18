@@ -74,6 +74,58 @@ For `single-page`, use sections without PPTX objects:
 
 Each section may include optional `id`, `title`, and `class`; `html` is required. The builder must reject a missing or invalid mode rather than choosing one.
 
+## Visual Examples
+
+Use these visuals as orientation for authors who are applying the skill to new content or adapting an existing report. They are examples of the shell and interaction pattern only; do not copy their dummy content into a report.
+
+### Single-Page Report
+
+![Single-page editable report shell](assets/examples/single-page-example.svg)
+
+Use this pattern when the output should read as a long, vertically scrolling report: a hero or opening section, repeated content sections, optional side section navigation, and a right-side style drawer. Keep the report in normal document flow and let section height expand with the content.
+
+Minimal model:
+
+```json
+{
+  "mode": "single-page",
+  "title": "Market Audit",
+  "sections": [
+    {
+      "id": "summary",
+      "title": "Executive Summary",
+      "html": "<h1 class=\"editable\" data-editable-element=\"text\">Executive Summary</h1><p class=\"editable\" data-editable-element=\"text\">...</p>"
+    }
+  ]
+}
+```
+
+### PPT Report
+
+![PPT editable report shell](assets/examples/ppt-example.svg)
+
+Use this pattern when the output must behave like a slide deck: fixed `1440 × 810` pages, page navigation, stable object geometry, and editable PPTX export. Keep page furniture fixed and non-editable, while report objects are represented in both DOM and `html-pptx-data`.
+
+Minimal model:
+
+```json
+{
+  "mode": "ppt",
+  "title": "Strategy Deck",
+  "slides": [
+    {
+      "title": "Page 1",
+      "html": "<h1 class=\"editable\" data-editable-element=\"text\">Page 1</h1>",
+      "objects": []
+    }
+  ]
+}
+```
+
+### Adding GIFs Or Screenshots
+
+If a future update adds a workflow GIF or screenshot, store it in `assets/examples/` and reference it from this section with relative Markdown paths. Keep media small enough for GitHub review. Prefer short GIFs that show one interaction only, such as opening the drawer, selecting an element, changing a HEX color, or exporting HTML.
+
 ## Mode-Specific Rules
 
 ### Single-Page
