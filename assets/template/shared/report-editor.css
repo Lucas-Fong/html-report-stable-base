@@ -1,0 +1,154 @@
+[data-editable-element] {
+  position: relative;
+}
+
+body.edit-mode [data-editable-element] {
+  cursor: pointer;
+}
+
+body.edit-mode [data-editable-element]:hover {
+  outline: 1px dashed rgba(37, 99, 235, .55);
+  outline-offset: 2px;
+}
+
+body.edit-mode [data-editable-element].selected-element {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.element-control-group[hidden] {
+  display: none !important;
+}
+
+.control-group[hidden],
+.control-group-content[hidden] {
+  display: none !important;
+}
+
+.style-drawer .control-group > .control-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.style-drawer .control-group > .control-group-toggle::before {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  border-radius: 5px;
+  place-items: center;
+  background: #e8f0ff;
+  color: #1d4ed8;
+  content: attr(data-module-icon);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.style-drawer .control-group > .control-group-toggle::after {
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform .16s ease;
+  content: '';
+  flex: 0 0 auto;
+}
+
+.style-drawer .control-group > .control-group-toggle[aria-expanded='true']::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.style-drawer .control-group > .control-group-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.control-group-content {
+  display: grid;
+  gap: 8px;
+}
+
+.group-reset-btn {
+  justify-self: end;
+  min-height: 26px !important;
+  margin-top: 2px;
+  padding: 3px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #52616f !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.group-reset-btn:hover { color: #1d4ed8 !important; }
+
+.element-selected-state[hidden] { display: none !important; }
+
+.selected-element-label {
+  overflow: hidden;
+  color: #5f6e7e;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.danger-btn {
+  border-color: #e5a6a6 !important;
+  background: #fff7f7 !important;
+  color: #b42318 !important;
+}
+
+.danger-btn:hover { background: #fee4e2 !important; }
+
+body.global-typography-active [data-ppt-level="h1"],
+body.global-typography-active main h1 { font-size: var(--h1-size) !important; }
+body.global-typography-active [data-ppt-level="h2"],
+body.global-typography-active main h2 { font-size: var(--h2-size) !important; }
+body.global-typography-active [data-ppt-level="h3"],
+body.global-typography-active main h3 { font-size: var(--h3-size) !important; }
+body.global-typography-active [data-ppt-level="h4"],
+body.global-typography-active main h4 { font-size: var(--h4-size) !important; }
+body.global-typography-active [data-ppt-level="metric"],
+body.global-typography-active .metric .value,
+body.global-typography-active .metric strong { font-size: var(--metric-size) !important; }
+body.global-typography-active [data-ppt-level="note"],
+body.global-typography-active .note { font-size: var(--note-size) !important; }
+body.global-typography-active main p,
+body.global-typography-active main li,
+body.global-typography-active main td,
+body.global-typography-active main th,
+body.global-typography-active [data-ppt-level="body"],
+body.global-typography-active .body-text { font-size: var(--body-size) !important; line-height: var(--body-line-height) !important; }
+body.global-font-active [data-editable-element] { font-family: var(--font-family) !important; }
+
+.element-empty-state {
+  color: #74686a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body.standalone-export .drawer-toggle,
+body.standalone-export .style-drawer {
+  display: none !important;
+}

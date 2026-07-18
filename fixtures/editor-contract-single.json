@@ -1,0 +1,11 @@
+{
+  "mode": "single-page",
+  "title": "Editor Contract Single",
+  "sections": [
+    {
+      "id": "verify",
+      "title": "验证",
+      "html": "<h1 class=\"editable\" data-editable-element=\"text\">底座功能验证</h1><h2 class=\"editable\" data-editable-element=\"text\">二级标题</h2><h3 class=\"editable\" data-editable-element=\"text\">三级标题</h3><h4 class=\"editable\" data-editable-element=\"text\">四级标题</h4><p class=\"editable\" data-editable-element=\"text\">用于验证编辑、尺寸、删除和排版控制。</p><p class=\"editable note\" data-editable-element=\"text\">备注文字</p><div class=\"metric\"><strong class=\"editable\" data-editable-element=\"text\">88</strong><span class=\"editable label\" data-editable-element=\"text\">指标说明</span></div><div data-editable-element=\"shape\">形状</div><div class=\"chart\" data-editable-element=\"chart\">图表</div><img data-editable-element=\"image\" alt=\"验证图片\" src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='60'%3E%3Crect width='100' height='60' fill='%23dbeafe'/%3E%3C/svg%3E\">"
+    }
+  ]
+}

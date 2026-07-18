@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTML Report Stable Base</title>
+  <link rel="stylesheet" href="shared/report-editor.css">
+  <style>
+    :root {
+      --font-family: "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+      --h1-size: 48px;
+      --h2-size: 32px;
+      --h3-size: 24px;
+      --h4-size: 18px;
+      --metric-size: 30px;
+      --body-size: 16px;
+      --note-size: 13px;
+      --body-line-height: 1.65;
+      --table-cell-padding-y: 10px;
+      --table-cell-padding-x: 12px;
+      --drawer-width: 320px;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9dee8;
+      --paper: #ffffff;
+      --surface: #f5f7fa;
+      --accent: #8b1538;
+      --section-nav-width: 152px;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--surface); }
+    body { margin: 0; color: var(--ink); background: var(--surface); font-family: var(--font-family); }
+    .report { width: min(1180px, calc(100% - 48px)); margin: 0 auto; background: var(--paper); min-height: 100vh; }
+    body.section-nav-left .report {
+      width: min(1180px, calc(100vw - var(--section-nav-width) - 72px));
+      margin-left: calc(var(--section-nav-width) + 24px);
+      margin-right: auto;
+    }
+    body.section-nav-right .report {
+      width: min(1180px, calc(100vw - var(--section-nav-width) - 72px));
+      margin-left: auto;
+      margin-right: calc(var(--section-nav-width) + 24px);
+    }
+    body.drawer-open .report {
+      width: min(1180px, calc(100vw - var(--drawer-width) - 48px));
+      margin-left: max(24px, calc((100vw - var(--drawer-width) - 1180px) / 2));
+      margin-right: calc(var(--drawer-width) + max(24px, calc((100vw - var(--drawer-width) - 1180px) / 2)));
+    }
+    body.drawer-open.section-nav-left .report {
+      width: min(1180px, calc(100vw - var(--drawer-width) - var(--section-nav-width) - 72px));
+      margin-left: calc(var(--section-nav-width) + 24px);
+      margin-right: calc(var(--drawer-width) + 24px);
+    }
+    body.drawer-open.section-nav-right .report {
+      width: min(1180px, calc(100vw - var(--drawer-width) - var(--section-nav-width) - 72px));
+      margin-left: 24px;
+      margin-right: calc(var(--drawer-width) + var(--section-nav-width) + 24px);
+    }
+    @media (min-width: 1400px) {
+      body:not(.drawer-open).section-nav-left .report,
+      body:not(.drawer-open).section-nav-right .report {
+        margin-left: auto;
+        margin-right: auto;
+      }
+      body:not(.drawer-open).section-nav-left .section-nav {
+        left: max(16px, calc((100vw - 1180px) / 2 - var(--section-nav-width) - 16px));
+      }
+      body:not(.drawer-open).section-nav-right .section-nav {
+        right: max(16px, calc((100vw - 1180px) / 2 - var(--section-nav-width) - 16px));
+      }
+    }
+    @media (min-width: 1900px) {
+      body.drawer-open {
+        --drawer-available-width: calc(100vw - var(--drawer-width));
+        --drawer-report-width: min(1180px, calc(var(--drawer-available-width) - 48px));
+        --drawer-report-side: calc((var(--drawer-available-width) - var(--drawer-report-width)) / 2);
+      }
+      body.drawer-open .report,
+      body.drawer-open.section-nav-left .report,
+      body.drawer-open.section-nav-right .report {
+        width: var(--drawer-report-width);
+        margin-left: var(--drawer-report-side);
+        margin-right: calc(var(--drawer-width) + var(--drawer-report-side));
+      }
+      body.drawer-open.section-nav-left .section-nav {
+        left: max(16px, calc(var(--drawer-report-side) - var(--section-nav-width) - 16px));
+      }
+      body.drawer-open.section-nav-right .section-nav {
+        right: calc(var(--drawer-width) + max(16px, calc(var(--drawer-report-side) - var(--section-nav-width) - 16px)));
+      }
+    }
+    .report-section { padding: 64px 72px; border-bottom: 1px solid var(--line); }
+    h1 { margin: 0 0 20px; font-size: var(--h1-size); line-height: 1.15; }
+    h2 { margin: 0 0 18px; font-size: var(--h2-size); line-height: 1.25; }
+    h3 { margin: 0 0 14px; font-size: var(--h3-size); line-height: 1.3; }
+    h4 { margin: 0 0 12px; font-size: var(--h4-size); line-height: 1.4; }
+    p, li, td, th, .body-text { font-size: var(--body-size); line-height: var(--body-line-height); }
+    .note { font-size: var(--note-size); line-height: 1.5; color: var(--muted); }
+    .metric .value { font-size: var(--metric-size); line-height: 1; font-weight: 900; }
+    .metric .label,
+    .metric p { font-size: var(--body-size); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: var(--table-cell-padding-y) var(--table-cell-padding-x); border: 1px solid var(--line); }
+    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+    .demo-shape { min-height: 180px; padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .demo-chart { width: 100%; height: 280px; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); }
+    .demo-image { display: block; width: 100%; height: 280px; object-fit: cover; background: #e9edf3; }
+    .drawer-toggle { position: fixed; right: 18px; bottom: 18px; z-index: 40; width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-size: 18px; cursor: pointer; box-shadow: 0 8px 24px rgba(16,24,40,.14); }
+    .style-drawer { position: fixed; z-index: 50; top: 0; right: 0; width: var(--drawer-width); height: 100vh; display: grid; grid-template-rows: auto 1fr auto; background: #fff; border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .18s ease; }
+    .style-drawer.open { transform: translateX(0); }
+    body.drawer-open .drawer-toggle { display: none; }
+    .drawer-header, .drawer-footer { padding: 14px 18px; background: #fff; }
+    .drawer-header { border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+    .drawer-body { min-height: 0; overflow-y: auto; padding: 14px 18px; display: grid; align-content: start; gap: 12px; }
+    .drawer-footer { border-top: 1px solid var(--line); }
+    .drawer-footer .export-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+    .drawer-footer .export-actions button { min-width: 0; padding-inline: 5px; font-size: 12px; }
+    .html-export-choice { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, .38); }
+    .html-export-choice[hidden] { display: none; }
+    .html-export-choice-panel { width: min(360px, 100%); display: grid; gap: 14px; padding: 20px; border: 1px solid #d5dee8; border-radius: 8px; background: #fff; box-shadow: 0 24px 60px rgba(15, 23, 42, .22); }
+    .html-export-choice-panel h4, .html-export-choice-panel p { margin: 0; }
+    .html-export-choice-panel h4 { font-size: 17px; color: var(--ink); }
+    .html-export-choice-panel p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .html-export-choice-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .html-export-choice-actions button { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font-weight: 700; }
+    .html-export-choice-actions button[data-html-export-mode="editable"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .html-export-choice-cancel { justify-self: end; border: 0; background: transparent; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+    .drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .drawer-title-row h3, .control-group h4 { margin: 0; font-family: Arial, sans-serif; letter-spacing: 0; }
+    .drawer-title-row h3 { font-size: 18px; }
+    .control-group { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+    .control-group h4 { font-size: 14px; }
+    .control-row { display: grid; grid-template-columns: 68px minmax(0, 1fr) 24px; gap: 6px; align-items: center; font: 12px/1.4 Arial, sans-serif; }
+    .control-row input, .control-row select { width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
+    .color-input-wrap { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 6px; align-items: center; }
+    .color-input-wrap input[type="color"] { width: 32px; height: 28px; padding: 2px; }
+    .color-input-wrap input[type="text"] { min-width: 0; text-transform: uppercase; }
+    .control-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .style-drawer button { min-height: 34px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+    .style-drawer button.active, .style-drawer .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .style-drawer .secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+    .close-icon-button { width: 30px; min-height: 30px !important; font-size: 18px; }
+    .full-btn { width: 100%; }
+    .style-drawer :disabled { opacity: .45; cursor: not-allowed; }
+    .section-nav {
+      position: fixed;
+      z-index: 30;
+      top: 92px;
+      width: var(--section-nav-width);
+      max-height: calc(100vh - 140px);
+      overflow: auto;
+      display: none;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 8px 22px rgba(16,24,40,.10);
+    }
+    body.section-nav-left .section-nav { display: grid; gap: 6px; left: 16px; }
+    body.section-nav-right .section-nav { display: grid; gap: 6px; right: 16px; }
+    body.drawer-open.section-nav-right .section-nav { right: calc(var(--drawer-width) + 16px); }
+    .section-nav a {
+      display: block;
+      min-width: 0;
+      padding: 8px 9px;
+      border-radius: 6px;
+      color: var(--muted);
+      font: 12px/1.35 Arial, sans-serif;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .section-nav a.active { background: #eef6f4; color: #2f7a70; font-weight: 700; }
+    .nav-style-control { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .typography-label {
+      position: absolute;
+      z-index: 20;
+      pointer-events: none;
+      padding: 1px 5px;
+      border: 1px solid rgba(47,122,112,.35);
+      border-radius: 999px;
+      background: rgba(255,255,255,.9);
+      color: #2f7a70;
+      font: 11px/1.35 Arial, sans-serif;
+      box-shadow: 0 2px 8px rgba(16,24,40,.08);
+    }
+    body:not(.edit-mode) .typography-label { display: none; }
+    @media (max-width: 900px) {
+      .report,
+      body.section-nav-left .report,
+      body.section-nav-right .report,
+      body.drawer-open .report,
+      body.drawer-open.section-nav-left .report,
+      body.drawer-open.section-nav-right .report { width: 100%; margin: 0; }
+      .report-section { padding: 40px 24px; }
+      .style-drawer { width: min(360px, 100vw); }
+      .demo-grid { grid-template-columns: 1fr; }
+      .section-nav,
+      body.section-nav-left .section-nav,
+      body.section-nav-right .section-nav,
+      body.drawer-open.section-nav-right .section-nav {
+        position: sticky;
+        top: 0;
+        left: auto;
+        right: auto;
+        width: 100%;
+        max-height: none;
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+        box-shadow: none;
+      }
+      body.section-nav-hidden .section-nav { display: none; }
+      .section-nav a { flex: 0 0 auto; }
+    }
+  </style>
+  <script src="shared/report-editor.js" defer></script>
+</head>
+<body data-report-mode="single-page" class="single-page-mode section-nav-right">
+  <button class="drawer-toggle" id="drawerToggle" type="button" aria-label="打开样式设置" title="样式设置">⚙</button>
+  <nav class="section-nav" id="sectionNav" aria-label="章节导航"></nav>
+  <aside class="style-drawer" id="styleDrawer" aria-label="HTML Report 样式设置">
+    <div class="drawer-header">
+      <div class="drawer-title-row">
+        <h3>HTML Report 样式</h3>
+        <button class="close-icon-button" id="closeDrawer" type="button" aria-label="关闭抽屉">×</button>
+      </div>
+      <button class="full-btn" id="editToggle" type="button">编辑模式</button>
+    </div>
+    <div class="drawer-body">
+      <div class="control-group">
+        <h4>章节导航</h4>
+        <div class="nav-style-control" id="sectionNavStyleControl" role="group" aria-label="单页导航样式">
+          <button type="button" data-section-nav-style="hidden">不展示</button>
+          <button type="button" data-section-nav-style="left">左侧</button>
+          <button class="active" type="button" data-section-nav-style="right">右侧</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <h4>全局排版</h4>
+        <label class="control-row"><span>字体</span><input class="edit-only" id="fontFamily" type="text" value='"Microsoft YaHei", "微软雅黑", Arial, sans-serif'><span></span></label>
+        <label class="control-row"><span>L1字号</span><input class="edit-only" data-global-var="--h1-size" type="number" value="48"><span>px</span></label>
+        <label class="control-row"><span>L2字号</span><input class="edit-only" data-global-var="--h2-size" type="number" value="32"><span>px</span></label>
+        <label class="control-row"><span>L3字号</span><input class="edit-only" data-global-var="--h3-size" type="number" value="24"><span>px</span></label>
+        <label class="control-row"><span>L4字号</span><input class="edit-only" data-global-var="--h4-size" type="number" value="18"><span>px</span></label>
+        <label class="control-row"><span>指标字号</span><input class="edit-only" data-global-var="--metric-size" type="number" value="30"><span>px</span></label>
+        <label class="control-row"><span>正文字号</span><input class="edit-only" data-global-var="--body-size" type="number" value="16"><span>px</span></label>
+        <label class="control-row"><span>备注字号</span><input class="edit-only" data-global-var="--note-size" type="number" value="13"><span>px</span></label>
+        <label class="control-row"><span>正文行高</span><input class="edit-only" data-global-var="--body-line-height" data-unit="" type="number" step="0.05" value="1.65"><span></span></label>
+        <label class="control-row"><span>表格上下</span><input class="edit-only" data-global-var="--table-cell-padding-y" type="number" value="10"><span>px</span></label>
+        <label class="control-row"><span>表格左右</span><input class="edit-only" data-global-var="--table-cell-padding-x" type="number" value="12"><span>px</span></label>
+      </div>
+      <div class="control-group">
+        <h4>元素独立样式</h4>
+        <div class="element-empty-state">开启编辑后，在页面中选择文本、矩形、图表或图片。</div>
+        <div class="element-selected-state" hidden>
+          <div class="selected-element-label" data-selected-element-label></div>
+          <button class="full-btn edit-only danger-btn" id="deleteSelectedElement" type="button">删除元素</button>
+        </div>
+      </div>
+      <div class="control-group element-control-group" data-element-types="text shape chart image" hidden>
+        <h4>元素尺寸</h4>
+        <label class="control-row"><span>宽度</span><input class="edit-only" id="elementWidth" type="number" min="20"><span>px</span></label>
+        <label class="control-row"><span>高度</span><input class="edit-only" id="elementHeight" type="number" min="20"><span>px</span></label>
+      </div>
+      <div class="control-group element-control-group" data-element-types="text" hidden>
+        <h4>文本样式</h4>
+        <label class="control-row"><span>字号</span><input class="edit-only" id="elementFontSize" type="number" min="8"><span>px</span></label>
+        <label class="control-row"><span>文字颜色</span><span class="color-input-wrap"><input class="edit-only" id="elementColor" type="color"><input class="edit-only" type="text" data-color-target="elementColor" placeholder="#FFFFFF" maxlength="7" spellcheck="false"></span><span></span></label>
+        <label class="control-row"><span>字重</span><select class="edit-only" id="elementFontWeight"><option value="400">常规</option><option value="600">半粗</option><option value="700">粗体</option><option value="900">特粗</option></select><span></span></label>
+        <label class="control-row"><span>对齐</span><select class="edit-only" id="elementTextAlign"><option value="left">左</option><option value="center">中</option><option value="right">右</option></select><span></span></label>
+        <label class="control-row"><span>行高</span><input class="edit-only" id="elementLineHeight" type="number" min="1" max="3" step="0.05"><span></span></label>
+      </div>
+      <div class="control-group element-control-group" data-element-types="text shape" hidden>
+        <h4>框体样式</h4>
+        <label class="control-row"><span>背景</span><span class="color-input-wrap"><input class="edit-only" id="elementBackground" type="color"><input class="edit-only" type="text" data-color-target="elementBackground" placeholder="#FFFFFF" maxlength="7" spellcheck="false"></span><span></span></label>
+        <label class="control-row"><span>边框颜色</span><span class="color-input-wrap"><input class="edit-only" id="elementBorderColor" type="color"><input class="edit-only" type="text" data-color-target="elementBorderColor" placeholder="#FFFFFF" maxlength="7" spellcheck="false"></span><span></span></label>
+        <label class="control-row"><span>边框宽度</span><input class="edit-only" id="elementBorderWidth" type="number" min="0" max="20"><span>px</span></label>
+        <label class="control-row"><span>圆角</span><input class="edit-only" id="elementBorderRadius" type="number" min="0" max="100"><span>px</span></label>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <div class="export-actions">
+        <button id="downloadHtml" type="button">HTML</button>
+        <button id="downloadLongPng" type="button" data-export-format="png">图片</button>
+        <button id="downloadLongPdf" type="button" data-export-format="pdf">PDF</button>
+      </div>
+    </div>
+  </aside>
+  <div class="html-export-choice" id="htmlExportChoice" role="dialog" aria-modal="true" aria-labelledby="htmlExportChoiceTitle" hidden>
+    <div class="html-export-choice-panel">
+      <h4 id="htmlExportChoiceTitle">导出 HTML</h4>
+      <p>选择导出后的报告是否保留样式抽屉、编辑入口和元素调整能力。</p>
+      <div class="html-export-choice-actions">
+        <button type="button" data-html-export-mode="editable">保留编辑</button>
+        <button type="button" data-html-export-mode="view">仅查看</button>
+      </div>
+      <button class="html-export-choice-cancel" type="button" data-html-export-cancel>取消</button>
+    </div>
+  </div>
+
+  <main class="report" id="report">
+    <section class="report-section" id="intro" data-title="示例">
+      <h1 class="editable" data-editable-element="text">HTML Report Stable Base</h1>
+      <h2 class="editable" data-editable-element="text">二级标题</h2>
+      <p class="editable" data-editable-element="text">这是可替换的结构示例。实际报告内容、配色、图表与版式由调用 skill 或用户输入决定。</p>
+      <p class="note editable" data-editable-element="text">备注文字用于来源、口径或补充说明。</p>
+      <div class="demo-grid">
+        <div class="demo-shape" data-editable-element="shape"><h3 class="editable" data-editable-element="text">矩形内容区</h3><h4 class="editable" data-editable-element="text">四级标题</h4><p class="editable" data-editable-element="text">可分别调整框体和文字样式。</p></div>
+        <div class="demo-shape metric" data-editable-element="shape"><div class="value editable" data-editable-element="text">86%</div><div class="label editable" data-editable-element="text">指标标签</div><p class="editable" data-editable-element="text">指标说明仍使用正文字号。</p></div>
+        <div class="demo-chart chart" data-editable-element="chart">ECharts 图表区域</div>
+        <img class="demo-image" data-editable-element="image" alt="示例图片区域" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='420'%3E%3Crect width='100%25' height='100%25' fill='%23e9edf3'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='28' fill='%23667085'%3EImage%3C/text%3E%3C/svg%3E">
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const drawer = document.getElementById('styleDrawer');
+    let editMode = false;
+
+    function setDrawerOpen(open) {
+      drawer.classList.toggle('open', open);
+      document.body.classList.toggle('drawer-open', open);
+    }
+
+    function setEditMode(enabled) {
+      editMode = enabled;
+      document.body.classList.toggle('edit-mode', enabled);
+      document.querySelectorAll('.editable').forEach(element => {
+        if (enabled) element.setAttribute('contenteditable', 'true');
+        else element.removeAttribute('contenteditable');
+      });
+      document.querySelectorAll('.edit-only').forEach(element => { element.disabled = !enabled; });
+      const button = document.getElementById('editToggle');
+      button.classList.toggle('active', enabled);
+      button.textContent = enabled ? '保存修改' : '编辑模式';
+      if (!enabled) window.HTMLReportEditor?.selectElement(null);
+      window.HTMLReportEditor?.refreshTypographyLabels?.();
+    }
+
+    document.getElementById('drawerToggle').onclick = () => setDrawerOpen(true);
+    document.getElementById('closeDrawer').onclick = () => {
+      setEditMode(false);
+      setDrawerOpen(false);
+    };
+    document.getElementById('editToggle').onclick = () => setEditMode(!editMode);
+    setEditMode(false);
+    window.addEventListener('load', () => {
+      window.HTMLReportEditor?.buildSectionNav?.();
+      window.HTMLReportEditor?.refreshTypographyLabels?.();
+      const htmlExportChoice = document.getElementById('htmlExportChoice');
+      const setHtmlExportChoiceOpen = open => {
+        htmlExportChoice.toggleAttribute('hidden', !open);
+        document.body.classList.toggle('export-dialog-open', open);
+      };
+      document.getElementById('downloadHtml').onclick = () => setHtmlExportChoiceOpen(true);
+      document.querySelectorAll('[data-html-export-mode]').forEach(button => {
+        button.onclick = () => {
+          setHtmlExportChoiceOpen(false);
+          window.HTMLReportEditor?.downloadStandaloneHtml?.(button.dataset.htmlExportMode === 'editable');
+        };
+      });
+      document.querySelector('[data-html-export-cancel]').onclick = () => setHtmlExportChoiceOpen(false);
+      htmlExportChoice.onclick = event => { if (event.target === htmlExportChoice) setHtmlExportChoiceOpen(false); };
+    });
+  </script>
+</body>
+</html>
