@@ -1,5 +1,7 @@
 # html-report-stable-base
 
+[中文说明](README.zh-CN.md)
+
 Codex skill for building stable, editable HTML reports from supplied content or existing HTML. It supports long scrolling reports and fixed 16:9 HTML decks, with a shared style drawer, per-element editing, browser QA, and click-triggered exports.
 
 ## Visual Examples
