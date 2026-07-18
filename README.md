@@ -55,7 +55,7 @@ node scripts/start_html_report_preview.mjs output 5300
 
 ## Install From GitHub
 
-This repository is public, so other users can install it by giving Codex the GitHub URL:
+This repository is public, so other users can install the skill directly by giving Codex the GitHub URL:
 
 ```text
 $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-base
@@ -65,20 +65,26 @@ If the installer asks for a repo path, use the repository root because `SKILL.md
 
 Public GitHub search can also find this repository through topics such as `codex`, `codex-skills`, `openai-codex`, `agent-skills`, `html-report`, and `report-generator`.
 
+## Install As A Codex Plugin
+
+This repository also includes a plugin manifest at `.codex-plugin/plugin.json`, so it can be distributed as a Codex plugin. The plugin exposes the same `html-report-stable-base` skill through `skills/html-report-stable-base/SKILL.md` and keeps the templates, scripts, references, fixtures, and examples at the repository root.
+
+Use this path when you want Codex plugin discovery, plugin cards, default prompts, metadata, and marketplace distribution instead of only direct skill installation.
+
 ## Discovery In Codex
 
-Public GitHub visibility does not automatically place a skill into Codex's curated skill list. For broad discoverability inside Codex, package the skill as a plugin and add that plugin to a marketplace source. A plugin can bundle this skill with templates, assets, scripts, MCP servers, or connectors, and users can browse/install plugins from supported Codex surfaces.
+Public GitHub visibility does not automatically place a skill into Codex's curated skill list. For broad discoverability inside Codex, add this plugin to a marketplace source. A marketplace can be personal, team-owned, or public depending on the Codex environment.
 
 Short-term distribution:
 
 - Share this GitHub URL and ask users to install it with `$skill-installer`.
 - Keep the README, topics, and examples clear so GitHub search works.
 
-Long-term distribution:
+Plugin distribution:
 
-- Create a plugin wrapper with `.codex-plugin/plugin.json`.
-- Place this skill under `skills/html-report-stable-base/`.
-- Add the plugin to a marketplace source for team or public discovery.
+- Share this GitHub URL as a plugin source.
+- Add the plugin to a personal, team, or public marketplace source.
+- Keep `.codex-plugin/plugin.json` metadata, default prompts, keywords, screenshots, and README examples current.
 
 ## Minimal Models
 
@@ -128,6 +134,8 @@ Every independently editable element must declare exactly one type.
 ## Repository Structure
 
 - `SKILL.md`: full skill contract and workflow.
+- `.codex-plugin/plugin.json`: Codex plugin metadata for discovery and marketplace distribution.
+- `skills/html-report-stable-base/`: plugin-facing wrapper skill entry.
 - `assets/examples/`: README and skill documentation visuals.
 - `assets/template/`: single-page and PPT templates plus shared editor assets.
 - `fixtures/`: acceptance fixtures for editor behavior.

@@ -1,0 +1,45 @@
+{
+  "name": "html-report-stable-base",
+  "version": "0.1.0",
+  "description": "Build stable editable HTML reports in single-page and PPT modes with style controls, QA, and exports.",
+  "author": {
+    "name": "Lucas Fong",
+    "url": "https://github.com/Lucas-Fong"
+  },
+  "homepage": "https://github.com/Lucas-Fong/html-report-stable-base",
+  "repository": "https://github.com/Lucas-Fong/html-report-stable-base",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "skill",
+    "html-report",
+    "html-ppt",
+    "editable-report",
+    "report-generator",
+    "presentation",
+    "browser-qa"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "HTML Report Stable Base",
+    "shortDescription": "Build editable HTML reports and HTML PPT decks",
+    "longDescription": "Use HTML Report Stable Base to turn supplied content or existing HTML into stable editable reports. It supports long single-page reports, fixed 16:9 HTML PPT decks, a right-side style drawer, per-element editing, browser QA, and click-triggered HTML, image, PDF, and PPTX exports.",
+    "developerName": "Lucas Fong",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Lucas-Fong/html-report-stable-base",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "defaultPrompt": [
+      "Create an editable single-page HTML report from this document.",
+      "Convert this HTML report into the stable editable shell.",
+      "Build a 16:9 editable HTML PPT deck from this outline."
+    ],
+    "brandColor": "#1E5AA8",
+    "screenshots": []
+  }
+}

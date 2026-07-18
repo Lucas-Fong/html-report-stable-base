@@ -54,7 +54,7 @@ node scripts/start_html_report_preview.mjs output 5300
 
 ## 从 GitHub 安装
 
-这个仓库已经公开，其他用户可以把 GitHub 地址交给 Codex 安装：
+这个仓库已经公开，其他用户可以把 GitHub 地址交给 Codex，直接安装 skill：
 
 ```text
 $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-base
@@ -64,11 +64,17 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 
 为了提高 GitHub 搜索命中率，仓库已设置 `codex`、`codex-skills`、`openai-codex`、`agent-skills`、`html-report`、`report-generator` 等 topic。
 
+## 作为 Codex Plugin 安装
+
+这个仓库现在已经包含 `.codex-plugin/plugin.json`，因此也可以作为 Codex plugin 分发。plugin 通过 `skills/html-report-stable-base/SKILL.md` 暴露同一个 `html-report-stable-base` skill，模板、脚本、references、fixtures 和示例图仍保留在仓库根目录统一维护。
+
+当你希望它在 Codex 中拥有插件卡片、默认 prompt、元信息和 marketplace 分发能力时，使用 plugin 方式比单纯安装 skill 更合适。
+
 ## 如何被 Codex 发现
 
-公开 GitHub 仓库不会自动进入 Codex 的 curated skill 列表。短期做法是分享 GitHub URL，让别人通过 `$skill-installer` 安装。
+公开 GitHub 仓库不会自动进入 Codex 的 curated skill 列表。想要在 Codex 中更容易被浏览和发现，需要把这个 plugin 加入 marketplace source。marketplace 可以是个人、团队或公开来源，取决于使用环境。
 
-如果希望别人能在 Codex 里像搜索插件一样发现它，建议把这个 skill 包装成 plugin，并加入 marketplace source。plugin 可以把 skill、模板、脚本、图片、MCP server 或 connector 一起打包，适合团队或公开分发。
+这个仓库已经具备 plugin manifest，下一步就是把它加入目标 marketplace。
 
 短期分发：
 
@@ -76,11 +82,11 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 - 让用户通过 `$skill-installer` 从 GitHub 安装。
 - 保持 README、topic 和示例图清晰，方便 GitHub 搜索。
 
-长期分发：
+插件分发：
 
-- 新建 plugin 外壳，包含 `.codex-plugin/plugin.json`。
-- 把这个 skill 放到 `skills/html-report-stable-base/`。
-- 把 plugin 加入个人、团队或公开 marketplace。
+- 分享这个 GitHub URL 作为 plugin source。
+- 把 plugin 加入个人、团队或公开 marketplace source。
+- 持续维护 `.codex-plugin/plugin.json` 中的元信息、默认 prompt、关键词、截图和 README 示例。
 
 ## 最小模型示例
 
@@ -130,6 +136,8 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 ## 目录结构
 
 - `SKILL.md`：完整 skill 契约和工作流。
+- `.codex-plugin/plugin.json`：Codex plugin 元信息，用于插件发现和 marketplace 分发。
+- `skills/html-report-stable-base/`：插件侧的 skill 入口。
 - `assets/examples/`：README 和 skill 文档中使用的示例图。
 - `assets/template/`：单页和 PPT 模板，以及共享编辑器资源。
 - `fixtures/`：编辑器验收用例。
