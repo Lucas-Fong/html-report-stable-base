@@ -1,4 +1,4 @@
-# html-report-stable-base
+# html-report
 
 [中文说明](README.zh-CN.md)
 
@@ -67,7 +67,7 @@ Public GitHub search can also find this repository through topics such as `codex
 
 ## Install As A Codex Plugin
 
-This repository also includes a plugin manifest at `.codex-plugin/plugin.json`, so it can be distributed as a Codex plugin. The plugin exposes the same `html-report-stable-base` skill through `skills/html-report-stable-base/SKILL.md` and keeps the templates, scripts, references, fixtures, and examples at the repository root.
+This repository also includes a plugin manifest at `.codex-plugin/plugin.json`, so it can be distributed as a Codex plugin. The plugin exposes the same `html-report` skill through `skills/html-report/SKILL.md` and keeps the templates, scripts, references, fixtures, and examples at the repository root.
 
 Use this path when you want Codex plugin discovery, plugin cards, default prompts, metadata, and marketplace distribution instead of only direct skill installation.
 
@@ -135,7 +135,7 @@ Every independently editable element must declare exactly one type.
 
 - `SKILL.md`: full skill contract and workflow.
 - `.codex-plugin/plugin.json`: Codex plugin metadata for discovery and marketplace distribution.
-- `skills/html-report-stable-base/`: plugin-facing wrapper skill entry.
+- `skills/html-report/`: plugin-facing wrapper skill entry.
 - `assets/examples/`: README and skill documentation visuals.
 - `assets/template/`: single-page and PPT templates plus shared editor assets.
 - `fixtures/`: acceptance fixtures for editor behavior.

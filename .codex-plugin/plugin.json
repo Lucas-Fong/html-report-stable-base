@@ -1,6 +1,6 @@
 {
-  "name": "html-report-stable-base",
-  "version": "0.1.0",
+  "name": "html-report",
+  "version": "0.2.0",
   "description": "Build stable editable HTML reports in single-page and PPT modes with style controls, QA, and exports.",
   "author": {
     "name": "Lucas Fong",
@@ -21,9 +21,9 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "HTML Report Stable Base",
+    "displayName": "HTML Report",
     "shortDescription": "Build editable HTML reports and HTML PPT decks",
-    "longDescription": "Use HTML Report Stable Base to turn supplied content or existing HTML into stable editable reports. It supports long single-page reports, fixed 16:9 HTML PPT decks, a right-side style drawer, per-element editing, browser QA, and click-triggered HTML, image, PDF, and PPTX exports.",
+    "longDescription": "Use HTML Report to turn supplied content or existing HTML into stable editable reports. It supports long single-page reports, fixed 16:9 HTML PPT decks, a right-side style drawer, per-element editing, browser QA, and click-triggered HTML, image, PDF, and PPTX exports.",
     "developerName": "Lucas Fong",
     "category": "Productivity",
     "capabilities": [

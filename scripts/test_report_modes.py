@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for HTML Report Stable Base modes and editor contract."""
+"""Regression checks for HTML Report modes and editor contract."""
 
 from __future__ import annotations
 
@@ -289,7 +289,7 @@ def test_metric_typography_is_a_seventh_global_level() -> None:
         assert_true("指标字号" in html, f"{name} drawer must name the metric size control")
         assert_true(".metric .value" in html and "font-size: var(--metric-size)" in html, f"{name} metric values must use metric size")
         assert_true(".metric .label" in html and "font-size: var(--body-size)" in html, f"{name} metric labels must remain body text")
-    for level in ("'H1'", "'H2'", "'H3'", "'H4'", "'指标'", "'正文'", "'备注'"):
+    for level in ("'L1'", "'L2'", "'L3'", "'L4'", "'指标'", "'正文'", "'备注'"):
         assert_true(level in EDITOR_JS.read_text(encoding="utf-8"), f"single-page typography labels must include {level}")
     assert_true(".typography-label" in single, "single-page template must include visible typography labels")
     assert_true("element.matches('[data-ppt-level=\"metric\"], .metric .value, .metric strong')" in ppt, "PPT typography classification must only recognize metric values")

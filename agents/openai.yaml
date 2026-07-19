@@ -1,3 +1,3 @@
-display_name: HTML Report Stable Base
+display_name: HTML Report
 short_description: 为已有内容套用单页或PPT模式的可编辑HTML报告底座
-default_prompt: 用HTML Report Stable Base处理我提供的内容；若未指定，请先确认使用长屏单页模式还是PPT模式。
+default_prompt: 用 HTML Report 处理我提供的内容；若未指定，请先确认使用长屏单页模式还是PPT模式。

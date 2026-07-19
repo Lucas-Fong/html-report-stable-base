@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static contract checks for HTML Report Stable Base outputs."""
+"""Static contract checks for HTML Report outputs."""
 
 from __future__ import annotations
 
