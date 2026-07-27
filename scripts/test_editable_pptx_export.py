@@ -144,9 +144,10 @@ def test_json_exports_editable_table_and_chart() -> None:
             assert_true("<c:chart" in slide_xml, "PPTX must contain a native chart")
             assert_true("sans-serif" not in slide_xml, "PPTX must not write CSS font stacks as font names")
             assert_true("Microsoft YaHei" in slide_xml, "PPTX should use the first concrete CSS font family")
-            assert_true('sz="2800"' in slide_xml, "H2 must export as 28pt in PPTX")
-            assert_true('sz="3400"' in slide_xml, "metric typography must preserve its independent font size in PPTX")
-            assert_true('sz="1400"' in slide_xml, "Body text must export as 14pt in PPTX")
+            assert_true('sz="2266"' in slide_xml, "H2 must export scaled from its real 34px size (34*960/1440 -> ~22.7pt)")
+            assert_true('sz="1333"' in slide_xml, "Body text must export scaled from its real 20px size (20*960/1440 -> ~13.3pt)")
+            assert_true(slide_xml.count('sz="2266"') >= 2, "metric text must preserve its own captured font size, scaled like other text")
+            assert_true('sz="2800"' not in slide_xml and 'sz="1400"' not in slide_xml, "font sizes must no longer be px-as-pt; they must use the canvas-to-slide scale")
             assert_true("Metric" in slide_xml, "metric-level text must be exported")
             chart_xml = "\n".join(
                 archive.read(name).decode("utf-8")
@@ -171,9 +172,9 @@ def test_fixed_header_footer_page_number_fonts() -> None:
   "slides": [{
     "title": "Fixed text",
     "objects": [
-      {"type": "text", "name": "header", "x": 56, "y": 36, "w": 320, "h": 26, "text": "Header", "fontSize": 44, "pptLevel": "h1", "pptRole": "header", "bold": true, "color": "#6f1022"},
-      {"type": "text", "name": "footer", "x": 56, "y": 760, "w": 220, "h": 18, "text": "Footer", "fontSize": 44, "pptLevel": "h1", "pptRole": "footer", "color": "#8b7e78"},
-      {"type": "text", "name": "page-number", "x": 1260, "y": 760, "w": 80, "h": 18, "text": "01", "fontSize": 44, "pptLevel": "h1", "pptRole": "pageNumber", "bold": true, "color": "#8b7e78"}
+      {"type": "text", "name": "header", "x": 56, "y": 36, "w": 320, "h": 26, "text": "Header", "fontSize": 12, "pptRole": "header", "bold": true, "color": "#6f1022"},
+      {"type": "text", "name": "footer", "x": 56, "y": 760, "w": 220, "h": 18, "text": "Footer", "fontSize": 12, "pptRole": "footer", "color": "#8b7e78"},
+      {"type": "text", "name": "page-number", "x": 1260, "y": 760, "w": 80, "h": 18, "text": "01", "fontSize": 12, "pptRole": "pageNumber", "bold": true, "color": "#8b7e78"}
     ]
   }]
 }
@@ -189,8 +190,8 @@ def test_fixed_header_footer_page_number_fonts() -> None:
             assert_true("Header" in slide_xml, "header must be exported")
             assert_true("Footer" in slide_xml, "footer must be exported")
             assert_true(">01<" in slide_xml, "page number must be exported")
-            assert_true('sz="1200"' in slide_xml, "header/footer/page number roles must export as fixed 12pt")
-            assert_true('sz="6000"' not in slide_xml, "fixed roles must not inherit H1 PPTX font size")
+            assert_true('sz="799"' in slide_xml, "12px page furniture must export scaled to ~8pt (12*960/1440)")
+            assert_true('sz="6000"' not in slide_xml and 'sz="4400"' not in slide_xml, "page furniture must stay small, never inflate to heading sizes")
 
 
 def test_standalone_html_export_inlines_scripts_and_cleans_runtime_state() -> None:

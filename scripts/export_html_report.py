@@ -7,6 +7,7 @@ import argparse
 import base64
 import json
 import mimetypes
+import os
 import re
 import tempfile
 from html import unescape
@@ -18,7 +19,7 @@ from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches, Pt
@@ -27,6 +28,8 @@ from playwright.sync_api import sync_playwright
 
 SLIDE_W = 1440
 SLIDE_H = 810
+EMU_PER_PT = 12700
+DEFAULT_LINE_SPACING = 1.2
 CHROME_CANDIDATES = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -330,10 +333,10 @@ def concrete_font_family(font_family: str | None, fallback: str = DEFAULT_FONT_F
     return fallback
 
 
-def set_run_font(run, font_family: str | None, font_size_px: float, bold: bool, color: str | None) -> None:
+def set_run_font(run, font_family: str | None, font_size_pt: float, bold: bool, color: str | None) -> None:
     family = concrete_font_family(font_family)
     run.font.name = family
-    run.font.size = Pt(float(font_size_px))
+    run.font.size = Pt(float(font_size_pt))
     run.font.bold = bold
     run.font.color.rgb = parse_color(color, "#1f2937")
     rpr = run._r.get_or_add_rPr()
@@ -346,15 +349,25 @@ def set_run_font(run, font_family: str | None, font_size_px: float, bold: bool, 
 
 
 def ppt_font_size(obj: dict, fallback: float = 14) -> float:
+    """Return the source font size in canvas px.
+
+    The DOM sync captures the real computed ``fontSize`` for every text object,
+    so it is the single source of truth. ``pptRole`` / ``pptLevel`` are used only
+    as a fallback when an explicit size is absent (e.g. hand-authored JSON).
+    """
+    size = obj.get("fontSize")
+    if size is not None:
+        try:
+            return float(size)
+        except (TypeError, ValueError):
+            pass
     role = obj.get("pptRole")
     if role in PPT_ROLE_FONT_SIZES:
-        return PPT_ROLE_FONT_SIZES[role]
+        return float(PPT_ROLE_FONT_SIZES[role])
     level = obj.get("pptLevel")
-    if level == "metric" and obj.get("fontSize") is not None:
-        return float(obj["fontSize"])
     if level in PPT_LEVEL_FONT_SIZES:
-        return PPT_LEVEL_FONT_SIZES[level]
-    return float(obj.get("fontSize", fallback))
+        return float(PPT_LEVEL_FONT_SIZES[level])
+    return float(fallback)
 
 
 def extract_deck_json(html_path: Path, explicit_json: str | None = None, executable: str | None = None) -> dict:
@@ -390,6 +403,18 @@ def px_to_emu(value: float, total_px: float, total_emu: int) -> int:
     return int(float(value) / float(total_px) * total_emu)
 
 
+def px_to_pt(value: float, meta: dict, prs: Presentation) -> float:
+    """Convert a canvas px length to slide points using the same scale as geometry.
+
+    Geometry maps ``meta.width`` px onto the full slide width, so a font sized in
+    canvas px must use the identical ratio to stay proportional to its box.
+    Example: 1440px canvas on a 13.333in (960pt) slide gives 960/1440 ≈ 0.667.
+    """
+    canvas_px = float(meta.get("width", SLIDE_W)) or SLIDE_W
+    slide_pt = float(prs.slide_width) / EMU_PER_PT
+    return float(value) * slide_pt / canvas_px
+
+
 def object_position(obj: dict, meta: dict, prs: Presentation) -> tuple[int, int, int, int]:
     width = float(meta.get("width", SLIDE_W))
     height = float(meta.get("height", SLIDE_H))
@@ -401,29 +426,60 @@ def object_position(obj: dict, meta: dict, prs: Presentation) -> tuple[int, int,
     )
 
 
+def resolve_alignment(align: str | None) -> PP_ALIGN | None:
+    if align == "center":
+        return PP_ALIGN.CENTER
+    if align == "right":
+        return PP_ALIGN.RIGHT
+    if align == "left":
+        return PP_ALIGN.LEFT
+    return None
+
+
+def line_spacing_multiple(obj: dict, font_size_px: float) -> float:
+    line_height = obj.get("lineHeight")
+    try:
+        line_height_px = float(line_height)
+    except (TypeError, ValueError):
+        return DEFAULT_LINE_SPACING
+    if line_height_px <= 0 or font_size_px <= 0:
+        return DEFAULT_LINE_SPACING
+    ratio = line_height_px / font_size_px
+    # Clamp to a sane range; CSS may report very large computed line-heights.
+    return max(0.8, min(2.5, ratio))
+
+
 def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     left, top, width, height = object_position(obj, meta, prs)
     box = slide.shapes.add_textbox(left, top, width, height)
     box.name = obj.get("name", "text")
     tf = box.text_frame
     tf.clear()
-    paragraph = tf.paragraphs[0]
-    paragraph.text = str(obj.get("text", ""))
-    align = obj.get("align")
-    if align == "center":
-        paragraph.alignment = PP_ALIGN.CENTER
-    elif align == "right":
-        paragraph.alignment = PP_ALIGN.RIGHT
-    elif align == "left":
-        paragraph.alignment = PP_ALIGN.LEFT
-    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
-    set_run_font(
-        run,
-        obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
-        ppt_font_size(obj, 14),
-        bool(obj.get("bold", False)),
-        obj.get("color"),
-    )
+    # Align the PPT text box model with the HTML box: no default insets, wrap on,
+    # keep the authored box size instead of auto-growing, anchor to the top.
+    tf.word_wrap = True
+    tf.auto_size = MSO_AUTO_SIZE.NONE
+    tf.vertical_anchor = MSO_ANCHOR.TOP
+    for side in ("margin_left", "margin_right", "margin_top", "margin_bottom"):
+        setattr(tf, side, Pt(0))
+
+    font_size_px = ppt_font_size(obj, 14)
+    font_size_pt = px_to_pt(font_size_px, meta, prs)
+    spacing = line_spacing_multiple(obj, font_size_px)
+    alignment = resolve_alignment(obj.get("align"))
+    family = obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY
+    bold = bool(obj.get("bold", False))
+    color = obj.get("color")
+
+    lines = str(obj.get("text", "")).split("\n")
+    for index, line in enumerate(lines):
+        paragraph = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        if alignment is not None:
+            paragraph.alignment = alignment
+        paragraph.line_spacing = spacing
+        run = paragraph.add_run()
+        run.text = line
+        set_run_font(run, family, font_size_pt, bold, color)
 
 
 def add_shape(slide, obj: dict, meta: dict, prs: Presentation) -> None:
@@ -457,6 +513,9 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         total = sum(float(x) for x in column_widths) or 1
         for i, value in enumerate(column_widths[: len(columns)]):
             table.columns[i].width = int(width * float(value) / total)
+    family = meta.get("fontFamily") or DEFAULT_FONT_FAMILY
+    header_pt = px_to_pt(float(obj.get("headerFontSize", 14) or 14), meta, prs)
+    body_pt = px_to_pt(float(obj.get("bodyFontSize", 14) or 14), meta, prs)
     for c, heading in enumerate(columns):
         cell = table.cell(0, c)
         cell.text = str(heading)
@@ -464,7 +523,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         cell.fill.fore_color.rgb = parse_color(obj.get("headerFill"), "#172033")
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
-                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, True, "#ffffff")
+                set_run_font(run, family, header_pt, True, "#ffffff")
     for r, row in enumerate(rows, start=1):
         for c, value in enumerate(row[: len(columns)]):
             cell = table.cell(r, c)
@@ -473,7 +532,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
             cell.fill.fore_color.rgb = parse_color("#f8fafc" if r % 2 == 0 else "#ffffff")
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
-                    set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, c == 0, "#334155")
+                    set_run_font(run, family, body_pt, c == 0, "#334155")
 
 
 def apply_chart_series_colors(chart, series_configs: list[dict]) -> None:
@@ -547,7 +606,7 @@ def add_chart(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         for paragraph in placeholder.text_frame.paragraphs:
             paragraph.alignment = PP_ALIGN.CENTER
             for run in paragraph.runs:
-                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 12, False, "#64748b")
+                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, px_to_pt(12, meta, prs), False, "#64748b")
         return
     series_types = {series.get("type", chart_type_name) for series in series_configs}
     if "bar" in series_types and "line" in series_types:
@@ -585,15 +644,22 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
         for paragraph in placeholder.text_frame.paragraphs:
             paragraph.alignment = PP_ALIGN.CENTER
             for run in paragraph.runs:
-                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 12, False, "#64748b")
+                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, px_to_pt(12, meta, prs), False, "#64748b")
         return
     slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
 
 
-def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
+def add_chart_image(slide, obj: dict, meta: dict, prs: Presentation, image_path: Path) -> None:
+    left, top, width, height = object_position(obj, meta, prs)
+    picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    picture.name = obj.get("name", "chart")
+
+
+def export_editable_pptx(deck: dict, out_path: Path, root: Path, chart_images: dict | None = None) -> None:
     meta = deck.get("meta") or {}
     if not deck.get("slides"):
         raise RuntimeError("html-pptx-data has no slides")
+    chart_images = chart_images or {}
     prs = Presentation()
     prs.slide_width = Inches(13.333333)
     prs.slide_height = Inches(7.5)
@@ -613,12 +679,60 @@ def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
             elif kind == "table":
                 add_table(slide, obj, meta, prs)
             elif kind == "chart":
-                add_chart(slide, obj, meta, prs)
+                image_path = chart_images.get(obj.get("name"))
+                if image_path and Path(image_path).exists():
+                    add_chart_image(slide, obj, meta, prs, Path(image_path))
+                else:
+                    add_chart(slide, obj, meta, prs)
             elif kind == "image":
                 add_image(slide, obj, meta, prs, root)
             else:
                 raise RuntimeError(f"Unsupported PPTX object type: {kind}")
     prs.save(out_path)
+
+
+def capture_chart_images(html_path: Path, deck: dict, executable: str | None) -> dict:
+    """Screenshot each chart element so the PPTX can embed a pixel-faithful image.
+
+    Returns a mapping of chart object name -> temporary PNG path. Charts that
+    cannot be located are simply omitted, letting the caller fall back to the
+    native rebuilt chart.
+    """
+    chart_names = [
+        obj.get("name")
+        for slide_data in deck.get("slides") or []
+        for obj in (slide_data.get("objects") or [])
+        if obj.get("type") == "chart" and obj.get("name")
+    ]
+    if not chart_names:
+        return {}
+    images: dict = {}
+    with sync_playwright() as p:
+        kwargs = {"headless": True}
+        if executable:
+            kwargs["executable_path"] = executable
+        browser = p.chromium.launch(**kwargs)
+        page = browser.new_page(viewport={"width": SLIDE_W, "height": SLIDE_H}, device_scale_factor=2)
+        page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+        page.wait_for_timeout(600)
+        slide_count = page.evaluate("document.querySelectorAll('.slide').length")
+        for i in range(int(slide_count or 0)):
+            page.evaluate("(i) => window.goTo ? window.goTo(i) : document.querySelectorAll('.slide')[i].scrollIntoView()", i)
+            page.wait_for_timeout(300)
+            for name in chart_names:
+                if name in images:
+                    continue
+                locator = page.locator(f'.slide.active-slide [data-pptx-name="{name}"]')
+                try:
+                    if locator.count() > 0:
+                        handle, tmp_name = tempfile.mkstemp(suffix=".png")
+                        os.close(handle)
+                        locator.first.screenshot(path=tmp_name)
+                        images[name] = Path(tmp_name)
+                except Exception:
+                    pass
+        browser.close()
+    return images
 
 
 def chrome_path(explicit: str | None) -> str | None:
@@ -676,6 +790,12 @@ def main() -> int:
     parser.add_argument("--formats", default=None, help="Comma list: html,pdf,pptx")
     parser.add_argument("--chrome-path", default=None, help="Optional Chrome/Chromium executable")
     parser.add_argument("--deck-json", default=None, help="Optional structured JSON file for editable PPTX")
+    parser.add_argument(
+        "--chart-mode",
+        choices=["native", "image"],
+        default="native",
+        help="native: rebuild charts as editable Office charts (default); image: embed a screenshot of each chart for higher visual fidelity (charts become non-editable).",
+    )
     args = parser.parse_args()
 
     html_path = Path(args.html).resolve()
@@ -711,7 +831,14 @@ def main() -> int:
     if "pptx" in formats:
         pptx = out_dir / f"{html_path.stem}.pptx"
         deck = extract_deck_json(html_path, args.deck_json, chrome_path(args.chrome_path))
-        export_editable_pptx(deck, pptx, html_path.parent)
+        chart_images: dict = {}
+        if args.chart_mode == "image":
+            chart_images = capture_chart_images(html_path, deck, chrome_path(args.chrome_path))
+        try:
+            export_editable_pptx(deck, pptx, html_path.parent, chart_images=chart_images)
+        finally:
+            for image_path in chart_images.values():
+                Path(image_path).unlink(missing_ok=True)
         outputs.append(pptx)
 
     for output in outputs:
