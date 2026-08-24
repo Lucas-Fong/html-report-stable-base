@@ -348,7 +348,7 @@ def test_metric_typography_is_a_seventh_global_level() -> None:
 def test_plugin_bundles_chart_and_word_cloud_skills() -> None:
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     assert_true(manifest["skills"] == "./skills/", "plugin manifest must expose the bundled skills directory")
-    for skill_name in ("html-report", "generate-word-clouds", "echarts-charts"):
+    for skill_name in ("html-report-stable-base", "generate-word-clouds", "echarts-charts"):
         skill_dir = ROOT / "skills" / skill_name
         skill_file = skill_dir / "SKILL.md"
         assert_true(skill_file.exists(), f"plugin package must bundle {skill_name}/SKILL.md")
@@ -365,6 +365,17 @@ def test_plugin_bundles_chart_and_word_cloud_skills() -> None:
         "skills/echarts-charts/references/official-links.md",
     ):
         assert_true((ROOT / relative_path).exists(), f"bundled helper is missing: {relative_path}")
+
+
+def test_canonical_skill_and_plugin_names() -> None:
+    root_skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+    wrapper = ROOT / "skills" / "html-report-stable-base" / "SKILL.md"
+    assert_true("name: html-report-stable-base" in root_skill, "root skill must use the canonical name")
+    assert_true(manifest["name"] == "html-report-stable-base", "plugin manifest must use the canonical name")
+    assert_true(wrapper.exists(), "plugin must expose the canonical wrapper")
+    assert_true("name: html-report-stable-base" in wrapper.read_text(encoding="utf-8"), "wrapper must use the canonical name")
+    assert_true(not (ROOT / "skills" / "html-report").exists(), "legacy html-report wrapper must not remain")
 
 
 def test_dependency_bootstrap_contract() -> None:
@@ -397,6 +408,7 @@ def main() -> int:
         test_ppt_drawer_accordion_groups_do_not_stretch,
         test_metric_typography_is_a_seventh_global_level,
         test_plugin_bundles_chart_and_word_cloud_skills,
+        test_canonical_skill_and_plugin_names,
         test_dependency_bootstrap_contract,
     ]
     for test in tests:

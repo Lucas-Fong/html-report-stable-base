@@ -25,7 +25,7 @@ node scripts/render_echarts_html.mjs config.json output.html
 ```
 
 6. 交付前用浏览器打开 HTML 验证：图表不空白、tooltip 可用、图例切换正常、中文不乱码、轴标签不严重重叠。
-7. 若用户需要图片或报告嵌入，先生成 HTML，再用浏览器截图导出 PNG/PDF。作为 `html-report` 插件内置 skill 使用时，若浏览器或依赖缺失，先在插件根目录运行 `node scripts/bootstrap_html_report_deps.mjs`。
+7. 若用户需要图片或报告嵌入，先生成 HTML，再用浏览器截图导出 PNG/PDF。作为 `html-report-stable-base` 插件内置 skill 使用时，若浏览器或依赖缺失，先在插件根目录运行 `node scripts/bootstrap_html_report_deps.mjs`。
 
 ## 配置格式
 

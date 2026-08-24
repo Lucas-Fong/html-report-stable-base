@@ -1,4 +1,4 @@
-# html-report
+# html-report-stable-base
 
 [中文说明](README.zh-CN.md)
 
@@ -82,11 +82,11 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 
 If the installer asks for a repo path, use the repository root because `SKILL.md` lives at the top level.
 
-Public GitHub search can also find this repository through topics such as `codex`, `codex-skills`, `openai-codex`, `agent-skills`, `html-report`, and `report-generator`.
+Public GitHub search can also find this repository through topics such as `codex`, `codex-skills`, `openai-codex`, `agent-skills`, `html-report-stable-base`, and `report-generator`.
 
 ## Install As A Codex Plugin
 
-This repository also includes a plugin manifest at `.codex-plugin/plugin.json`, so it can be distributed as a Codex plugin. The plugin exposes `html-report`, `echarts-charts`, and `generate-word-clouds` through `skills/`, while keeping the report templates, scripts, references, fixtures, and examples at the repository root.
+This repository also includes a plugin manifest at `.codex-plugin/plugin.json`, so it can be distributed as a Codex plugin. The plugin exposes `html-report-stable-base`, `echarts-charts`, and `generate-word-clouds` through `skills/`, while keeping the report templates, scripts, references, fixtures, and examples at the repository root.
 
 Use this path when you want Codex plugin discovery, plugin cards, default prompts, metadata, and marketplace distribution instead of only direct skill installation.
 
@@ -154,7 +154,7 @@ Every independently editable element must declare exactly one type.
 
 - `SKILL.md`: full skill contract and workflow.
 - `.codex-plugin/plugin.json`: Codex plugin metadata for discovery and marketplace distribution.
-- `skills/html-report/`: plugin-facing wrapper skill entry.
+- `skills/html-report-stable-base/`: plugin-facing wrapper skill entry.
 - `skills/echarts-charts/`: bundled ECharts chart generation skill.
 - `skills/generate-word-clouds/`: bundled PNG word-cloud generation skill.
 - `assets/examples/`: README and skill documentation visuals.

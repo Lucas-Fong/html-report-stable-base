@@ -1,5 +1,5 @@
 ---
-name: html-report
+name: html-report-stable-base
 description: "Use when supplied content or an existing HTML report needs a stable editable browser shell in either long-screen single-page mode or 16:9 PPT mode, including global and per-element styling, ECharts canvas support, standalone HTML delivery, or optional PPTX export in PPT mode."
 ---
 

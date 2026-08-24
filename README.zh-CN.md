@@ -1,4 +1,4 @@
-# html-report
+# html-report-stable-base
 
 这是一个用于生成稳定、可编辑 HTML 报告的 Codex skill。它可以把已有内容或已有 HTML 报告包装成统一的编辑壳，支持长屏单页报告和固定 16:9 的 HTML PPT，并提供右侧样式抽屉、元素级编辑、浏览器验收、点击触发导出，以及内置的 ECharts / 词云辅助 skill。
 
@@ -81,11 +81,11 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 
 如果安装器要求填写 repo path，使用仓库根目录即可，因为 `SKILL.md` 就在根目录。
 
-为了提高 GitHub 搜索命中率，仓库已设置 `codex`、`codex-skills`、`openai-codex`、`agent-skills`、`html-report`、`report-generator` 等 topic。
+为了提高 GitHub 搜索命中率，仓库已设置 `codex`、`codex-skills`、`openai-codex`、`agent-skills`、`html-report-stable-base`、`report-generator` 等 topic。
 
 ## 作为 Codex Plugin 安装
 
-这个仓库现在已经包含 `.codex-plugin/plugin.json`，因此也可以作为 Codex plugin 分发。plugin 通过 `skills/` 暴露 `html-report`、`echarts-charts` 和 `generate-word-clouds` 三个 skill，报告模板、脚本、references、fixtures 和示例图仍保留在仓库根目录统一维护。
+这个仓库现在已经包含 `.codex-plugin/plugin.json`，因此也可以作为 Codex plugin 分发。plugin 通过 `skills/` 暴露 `html-report-stable-base`、`echarts-charts` 和 `generate-word-clouds` 三个 skill，报告模板、脚本、references、fixtures 和示例图仍保留在仓库根目录统一维护。
 
 当你希望它在 Codex 中拥有插件卡片、默认 prompt、元信息和 marketplace 分发能力时，使用 plugin 方式比单纯安装 skill 更合适。
 
@@ -156,7 +156,7 @@ $skill-installer install from https://github.com/Lucas-Fong/html-report-stable-b
 
 - `SKILL.md`：完整 skill 契约和工作流。
 - `.codex-plugin/plugin.json`：Codex plugin 元信息，用于插件发现和 marketplace 分发。
-- `skills/html-report/`：插件侧的 skill 入口。
+- `skills/html-report-stable-base/`：插件侧的 skill 入口。
 - `skills/echarts-charts/`：内置 ECharts 图表生成 skill。
 - `skills/generate-word-clouds/`：内置 PNG 词云生成 skill。
 - `assets/examples/`：README 和 skill 文档中使用的示例图。
