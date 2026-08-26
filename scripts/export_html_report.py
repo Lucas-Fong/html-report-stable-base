@@ -586,12 +586,12 @@ def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type
     return frame
 
 
-def add_chart(slide, obj: dict, meta: dict, prs: Presentation) -> None:
+def add_chart(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> None:
     if obj.get("renderMode") == "image" or obj.get("chartType") == "image":
         source = obj.get("imageSrc") or obj.get("src")
         if not source:
             raise RuntimeError(f"Image-backed chart {obj.get('name', '')} has no image source")
-        add_image(slide, {**obj, "src": source}, meta, prs, Path("."))
+        add_image(slide, {**obj, "src": source}, meta, prs, root)
         return
     chart_type_name = obj.get("chartType") or obj.get("type")
     series_configs = obj.get("series") or []
@@ -673,7 +673,7 @@ def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
             elif kind == "table":
                 add_table(slide, obj, meta, prs)
             elif kind == "chart":
-                add_chart(slide, obj, meta, prs)
+                add_chart(slide, obj, meta, prs, root)
             elif kind == "image":
                 add_image(slide, obj, meta, prs, root)
             else:

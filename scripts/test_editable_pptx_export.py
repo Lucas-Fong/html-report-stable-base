@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import subprocess
 import sys
 import tempfile
@@ -279,6 +280,36 @@ def test_v2_complex_chart_embeds_image_instead_of_placeholder() -> None:
             assert_true("图表未嵌入" not in slide_xml, "complex v2 chart must not use the unsupported chart placeholder")
 
 
+def test_v2_image_backed_chart_resolves_relative_asset() -> None:
+    png_data = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4HwAAAABJRU5ErkJggg==")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        assets = root / "assets"
+        assets.mkdir()
+        (assets / "wordcloud.png").write_bytes(png_data)
+        html = root / "deck.html"
+        html.write_text(
+            """
+<!doctype html><html><body data-report-mode="ppt">
+<script id="html-pptx-data" type="application/json">
+{
+  "pptxContractVersion": 2,
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+  "slides": [{"title": "v2", "objects": [{"type": "chart", "name": "wordcloud", "frame": {"x": 760, "y": 180, "w": 480, "h": 320}, "renderMode": "image", "imageSrc": "assets/wordcloud.png"}]}]
+}
+</script>
+</body></html>
+""",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(root / "deck.pptx") as archive:
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true(any(name.startswith("ppt/media/") for name in archive.namelist()), "relative image-backed chart must export its image")
+            assert_true("图片未嵌入" not in slide_xml, "relative image-backed chart must not use the missing-image placeholder")
+
+
 def test_standalone_html_export_inlines_scripts_and_cleans_runtime_state() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -337,6 +368,7 @@ def main() -> int:
         test_v2_text_uses_explicit_point_metrics_and_zero_padding,
         test_v2_table_uses_explicit_cell_font_sizes,
         test_v2_complex_chart_embeds_image_instead_of_placeholder,
+        test_v2_image_backed_chart_resolves_relative_asset,
         test_standalone_html_export_inlines_scripts_and_cleans_runtime_state,
     ]
     for test in tests:
