@@ -71,10 +71,34 @@ if (mode === 'single-page') {
   await page.waitForTimeout(100);
 }
 
+const pptScaleBeforeDrawer = mode === 'ppt'
+  ? await page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--stage-scale')))
+  : null;
+
 await page.click('#drawerToggle');
 await page.waitForTimeout(150);
 if (await page.evaluate(() => document.body.classList.contains('drawer-open'))) ok('drawer opens');
 else fail('drawer did not open');
+
+if (mode === 'ppt') {
+  const drawerScaleState = await page.evaluate(() => {
+    const deck = document.getElementById('deck').getBoundingClientRect();
+    const drawer = document.getElementById('styleDrawer').getBoundingClientRect();
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    return {
+      deckWidth: deck.width,
+      drawerWidth: drawer.width,
+      viewport,
+      scale: Number(getComputedStyle(document.documentElement).getPropertyValue('--stage-scale')),
+    };
+  });
+  const expectedDeckWidth = drawerScaleState.viewport.width - drawerScaleState.drawerWidth;
+  const expectedScale = Math.min(1, expectedDeckWidth / 1440, drawerScaleState.viewport.height / 810);
+  const keepsCanvasInAvailableWidth = Math.abs(drawerScaleState.deckWidth - expectedDeckWidth) <= 1;
+  const rescalesCanvas = Math.abs(drawerScaleState.scale - expectedScale) <= 0.002 && drawerScaleState.scale < pptScaleBeforeDrawer;
+  if (keepsCanvasInAvailableWidth && rescalesCanvas) ok('open drawer reserves canvas width and rescales the PPT stage');
+  else fail(`open drawer scale failed: ${JSON.stringify({ ...drawerScaleState, pptScaleBeforeDrawer, expectedDeckWidth, expectedScale })}`);
+}
 
 const accordionInitialState = await page.evaluate(() => {
   const groups = [...document.querySelectorAll('.drawer-body > .control-group')];
@@ -204,6 +228,11 @@ const pageVisibility = await page.evaluate(reportMode => {
       exportSectionCount: exported.querySelectorAll('.report-section').length,
     };
   }
+  const slides = [...document.querySelectorAll('.slide')];
+  const hiddenSlide = slides[1];
+  const initialSlideCount = slides.length;
+  const initialFooterCount = slides.filter(slide => slide.querySelector('.page-number')).length;
+  const hiddenSlideHasFooter = Boolean(hiddenSlide?.querySelector('.page-number'));
   window.goTo(1);
   input.checked = false;
   input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -212,9 +241,11 @@ const pageVisibility = await page.evaluate(reportMode => {
   const exported = new DOMParser().parseFromString(snapshot, 'text/html');
   const deck = JSON.parse(exported.getElementById('html-pptx-data').textContent);
   return {
-    hidden: document.querySelectorAll('.slide')[1]?.dataset.pageHidden === 'true',
+    hidden: hiddenSlide?.dataset.pageHidden === 'true',
     navCount: document.querySelectorAll('#nav button').length,
     visiblePageNumbers: [...document.querySelectorAll('.slide:not([data-page-hidden="true"]) .page-number')].map(node => node.textContent.trim()),
+    expectedNavCount: initialSlideCount - 1,
+    expectedFooterCount: initialFooterCount - (hiddenSlideHasFooter ? 1 : 0),
     exportSlideCount: exported.querySelectorAll('.slide').length,
     exportJsonSlideCount: deck.slides.length,
   };
@@ -224,10 +255,32 @@ if (pageVisibility.missing) {
 } else if (mode === 'single-page') {
   if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
   else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
-} else if (pageVisibility.hidden && pageVisibility.navCount === 2 && pageVisibility.visiblePageNumbers.join(',') === '01,02' && pageVisibility.exportSlideCount === 2 && pageVisibility.exportJsonSlideCount === 2) {
+} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedNavCount && pageVisibility.visiblePageNumbers.length === pageVisibility.expectedFooterCount && new Set(pageVisibility.visiblePageNumbers).size === pageVisibility.visiblePageNumbers.length && pageVisibility.exportSlideCount === pageVisibility.expectedNavCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedNavCount) {
   ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
 } else {
   fail(`PPT visibility failed: ${JSON.stringify(pageVisibility)}`);
+}
+
+const hiddenPageKeyboardNavigation = mode === 'ppt' && !pageVisibility.missing
+  ? await page.evaluate(() => {
+    const slides = [...document.querySelectorAll('.slide')];
+    if (slides.length < 3) return { skipped: true };
+    const activeIndex = () => slides.findIndex(slide => slide.classList.contains('active-slide'));
+    window.goTo(2);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    const afterPrevious = activeIndex();
+    window.goTo(0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const afterNext = activeIndex();
+    return { afterPrevious, afterNext };
+  })
+  : null;
+if (hiddenPageKeyboardNavigation?.skipped) {
+  ok('hidden-page keyboard navigation check skipped: fewer than three slides');
+} else if (hiddenPageKeyboardNavigation && hiddenPageKeyboardNavigation.afterPrevious === 0 && hiddenPageKeyboardNavigation.afterNext === 2) {
+  ok('PPT keyboard navigation skips hidden pages in both directions');
+} else if (hiddenPageKeyboardNavigation) {
+  fail(`PPT keyboard navigation did not skip the hidden page: ${JSON.stringify(hiddenPageKeyboardNavigation)}`);
 }
 
 if (mode === 'ppt' && !pageVisibility.missing) {
@@ -557,11 +610,16 @@ if (mode === 'single-page') {
   }));
   if (pptState.slides > 0 && pptState.nav && pptState.pptxData && Number(pptState.scale) > 0) ok('PPT canvas, navigation, and PPTX contract remain available');
   else fail(`PPT contract failed: ${JSON.stringify(pptState)}`);
+  const expectedExport = await page.evaluate(() => {
+    const cover = document.querySelector('.slide:not([data-page-hidden="true"]) h1, .slide:not([data-page-hidden="true"]) [data-ppt-level="h1"]');
+    const title = (cover?.textContent || document.title || 'html-ppt').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+    return { fileName: `${Array.from(title || 'html-ppt').slice(0, 72).join('')}.html`, slideCount: document.querySelectorAll('.slide:not([data-page-hidden="true"])').length };
+  });
   const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
   const exportedSlideCount = await exported.locator('.slide').count();
   await exported.close();
-  if (suggestedFilename === '底座功能验证.html' && exportedSlideCount === 2) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
-  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, exportedSlideCount })}`);
+  if (suggestedFilename === expectedExport.fileName && exportedSlideCount === expectedExport.slideCount) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
+  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, exportedSlideCount, expectedExport })}`);
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });

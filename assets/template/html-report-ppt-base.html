@@ -902,6 +902,17 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     }
     window.goTo = goTo;
 
+    function goToAdjacentNavigableSlide(offset) {
+      const candidates = navigableSlideIndexes();
+      const currentPosition = candidates.indexOf(current);
+      if (currentPosition < 0) {
+        goTo(current);
+        return;
+      }
+      const nextPosition = Math.max(0, Math.min(currentPosition + offset, candidates.length - 1));
+      goTo(candidates[nextPosition]);
+    }
+
     function setNavStyle(nextStyle) {
       navStyle = nextStyle;
       document.body.classList.toggle('nav-hidden', navStyle === 'hidden');
@@ -1438,8 +1449,8 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
 
     document.addEventListener('keydown', e => {
       if (editMode && e.target.closest('[contenteditable]')) return;
-      if (['ArrowDown', 'PageDown', 'ArrowRight'].includes(e.key)) goTo(current + 1);
-      if (['ArrowUp', 'PageUp', 'ArrowLeft'].includes(e.key)) goTo(current - 1);
+      if (['ArrowDown', 'PageDown', 'ArrowRight'].includes(e.key)) goToAdjacentNavigableSlide(1);
+      if (['ArrowUp', 'PageUp', 'ArrowLeft'].includes(e.key)) goToAdjacentNavigableSlide(-1);
       if (e.key === 'Escape') setDrawerOpen(false);
     });
     window.addEventListener('resize', () => {
