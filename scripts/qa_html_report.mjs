@@ -246,6 +246,10 @@ const pageVisibility = await page.evaluate(reportMode => {
     visiblePageNumbers: [...document.querySelectorAll('.slide:not([data-page-hidden="true"]) .page-number')].map(node => node.textContent.trim()),
     expectedNavCount: initialSlideCount - 1,
     expectedFooterCount: initialFooterCount - (hiddenSlideHasFooter ? 1 : 0),
+    expectedPageNumbers: Array.from(
+      { length: initialFooterCount - (hiddenSlideHasFooter ? 1 : 0) },
+      (_, index) => String(index + 1).padStart(2, '0'),
+    ),
     exportSlideCount: exported.querySelectorAll('.slide').length,
     exportJsonSlideCount: deck.slides.length,
   };
@@ -255,7 +259,7 @@ if (pageVisibility.missing) {
 } else if (mode === 'single-page') {
   if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
   else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
-} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedNavCount && pageVisibility.visiblePageNumbers.length === pageVisibility.expectedFooterCount && new Set(pageVisibility.visiblePageNumbers).size === pageVisibility.visiblePageNumbers.length && pageVisibility.exportSlideCount === pageVisibility.expectedNavCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedNavCount) {
+} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedNavCount && pageVisibility.visiblePageNumbers.join(',') === pageVisibility.expectedPageNumbers.join(',') && pageVisibility.exportSlideCount === pageVisibility.expectedNavCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedNavCount) {
   ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
 } else {
   fail(`PPT visibility failed: ${JSON.stringify(pageVisibility)}`);
@@ -610,16 +614,21 @@ if (mode === 'single-page') {
   }));
   if (pptState.slides > 0 && pptState.nav && pptState.pptxData && Number(pptState.scale) > 0) ok('PPT canvas, navigation, and PPTX contract remain available');
   else fail(`PPT contract failed: ${JSON.stringify(pptState)}`);
-  const expectedExport = await page.evaluate(() => {
-    const cover = document.querySelector('.slide:not([data-page-hidden="true"]) h1, .slide:not([data-page-hidden="true"]) [data-ppt-level="h1"]');
-    const title = (cover?.textContent || document.title || 'html-ppt').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
-    return { fileName: `${Array.from(title || 'html-ppt').slice(0, 72).join('')}.html`, slideCount: document.querySelectorAll('.slide:not([data-page-hidden="true"])').length };
-  });
+  const renderedSlides = await page.evaluate(() => ({
+    activeIndex: [...document.querySelectorAll('section.slide')].findIndex(slide => slide.classList.contains('active-slide')),
+    visibleIndexes: [...document.querySelectorAll('section.slide')]
+      .map((slide, index) => ({ index, display: getComputedStyle(slide).display }))
+      .filter(slide => slide.display !== 'none')
+      .map(slide => slide.index),
+  }));
+  if (renderedSlides.visibleIndexes.length === 1 && renderedSlides.visibleIndexes[0] === renderedSlides.activeIndex) ok('PPT mode renders only the current slide');
+  else fail(`PPT active-slide rendering failed: ${JSON.stringify(renderedSlides)}`);
+  const expectedFilename = await page.evaluate(() => window.HTMLReportEditor?.getHtmlExportFileName?.());
   const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
   const exportedSlideCount = await exported.locator('.slide').count();
   await exported.close();
-  if (suggestedFilename === expectedExport.fileName && exportedSlideCount === expectedExport.slideCount) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
-  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, exportedSlideCount, expectedExport })}`);
+  if (suggestedFilename === expectedFilename && exportedSlideCount === pageVisibility.expectedNavCount) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
+  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, expectedFilename, exportedSlideCount, expectedVisibleSlideCount: pageVisibility.expectedNavCount })}`);
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });

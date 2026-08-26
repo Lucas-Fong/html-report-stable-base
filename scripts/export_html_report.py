@@ -9,6 +9,7 @@ import json
 import mimetypes
 import re
 import tempfile
+from xml.etree import ElementTree
 from html import unescape
 from pathlib import Path
 
@@ -49,12 +50,23 @@ SHAPE_TYPES = {
     "line": MSO_SHAPE.RECTANGLE,
 }
 
-DEFAULT_FONT_FAMILY = "Microsoft YaHei"
+PPT_FONT_FAMILY = "Microsoft YaHei"
+DEFAULT_FONT_FAMILY = PPT_FONT_FAMILY
+PPT_THEME_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+PPT_TYPOGRAPHY_SCALE = {
+    "coverTitle": {"fontSizePt": 42, "lineHeightPt": 50},
+    "pageTitle": {"fontSizePt": 28, "lineHeightPt": 34},
+    "sectionTitle": {"fontSizePt": 20, "lineHeightPt": 24},
+    "metric": {"fontSizePt": 28, "lineHeightPt": 34},
+    "body": {"fontSizePt": 14, "lineHeightPt": 20},
+    "note": {"fontSizePt": 11, "lineHeightPt": 14},
+    "footer": {"fontSizePt": 12, "lineHeightPt": 14},
+}
 PPT_LEVEL_FONT_SIZES = {
-    "h1": 60,
+    "h1": 42,
     "h2": 28,
     "h3": 20,
-    "metric": 30,
+    "metric": 28,
     "body": 14,
 }
 PPT_ROLE_FONT_SIZES = {
@@ -321,13 +333,8 @@ def set_line(shape, line: str | dict | None) -> None:
 
 
 def concrete_font_family(font_family: str | None, fallback: str = DEFAULT_FONT_FAMILY) -> str:
-    if not font_family:
-        return fallback
-    for part in font_family.split(","):
-        name = part.strip().strip("\"'")
-        if name and name.lower() not in {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"}:
-            return name
-    return fallback
+    """Keep every editable PPTX text run on the agreed output font."""
+    return PPT_FONT_FAMILY
 
 
 def set_run_font(run, font_family: str | None, font_size_px: float, bold: bool, color: str | None) -> None:
@@ -393,12 +400,86 @@ def px_to_emu(value: float, total_px: float, total_emu: int) -> int:
 def object_position(obj: dict, meta: dict, prs: Presentation) -> tuple[int, int, int, int]:
     width = float(meta.get("width", SLIDE_W))
     height = float(meta.get("height", SLIDE_H))
+    frame = obj.get("frame") if isinstance(obj.get("frame"), dict) else obj
     return (
-        px_to_emu(obj.get("x", 0), width, prs.slide_width),
-        px_to_emu(obj.get("y", 0), height, prs.slide_height),
-        px_to_emu(obj.get("w", obj.get("width", 0)), width, prs.slide_width),
-        px_to_emu(obj.get("h", obj.get("height", 0)), height, prs.slide_height),
+        px_to_emu(frame.get("x", 0), width, prs.slide_width),
+        px_to_emu(frame.get("y", 0), height, prs.slide_height),
+        px_to_emu(frame.get("w", frame.get("width", 0)), width, prs.slide_width),
+        px_to_emu(frame.get("h", frame.get("height", 0)), height, prs.slide_height),
     )
+
+
+def v2_text_style(obj: dict) -> dict | None:
+    style = obj.get("textStyle")
+    return style if isinstance(style, dict) else None
+
+
+def typography_token(obj: dict, style: dict | None, meta: dict) -> str | None:
+    role = obj.get("pptRole")
+    if role in PPT_ROLE_FONT_SIZES:
+        return "footer"
+    if style and style.get("typography") in PPT_TYPOGRAPHY_SCALE:
+        return str(style["typography"])
+    if not style or meta.get("typographyStandard") != "v1":
+        return None
+    level = obj.get("pptLevel")
+    level_tokens = {
+        "h1": "coverTitle",
+        "h2": "pageTitle",
+        "h3": "sectionTitle",
+        "metric": "metric",
+        "body": "body",
+        "note": "note",
+    }
+    if level in level_tokens:
+        return level_tokens[level]
+    raw_size = float(style.get("fontSizePt", 14))
+    if raw_size >= 36:
+        return "coverTitle"
+    if raw_size >= 24:
+        return "pageTitle"
+    if raw_size >= 16:
+        return "sectionTitle"
+    if raw_size >= 12:
+        return "body"
+    return "note"
+
+
+def v2_text_metrics(obj: dict, style: dict, meta: dict) -> tuple[float, float]:
+    token = typography_token(obj, style, meta)
+    if token:
+        spec = PPT_TYPOGRAPHY_SCALE[token]
+        return float(spec["fontSizePt"]), float(spec["lineHeightPt"])
+    size = float(style.get("fontSizePt", 14))
+    return size, float(style.get("lineHeightPt", size * 1.2))
+
+
+def table_font_size(style: dict, meta: dict, fallback: float = 14) -> float:
+    if style.get("typography") in PPT_TYPOGRAPHY_SCALE:
+        return float(PPT_TYPOGRAPHY_SCALE[style["typography"]]["fontSizePt"])
+    if meta.get("typographyStandard") == "v1":
+        return float(PPT_TYPOGRAPHY_SCALE["body"]["fontSizePt"])
+    return float(style.get("fontSizePt", fallback))
+
+
+def force_ppt_theme_font(prs: Presentation) -> None:
+    """Set major/minor theme fonts so charts and inherited text use Microsoft YaHei."""
+    for part in prs.part.package.iter_parts():
+        if not str(part.partname).startswith("/ppt/theme/"):
+            continue
+        root = ElementTree.fromstring(part.blob)
+        for font_scheme in root.findall(f".//{{{PPT_THEME_NS}}}fontScheme"):
+            for font_node in font_scheme.iter():
+                if "typeface" in font_node.attrib:
+                    font_node.set("typeface", PPT_FONT_FAMILY)
+        part._blob = ElementTree.tostring(root, encoding="UTF-8", xml_declaration=True)
+
+
+def padding_pt(style: dict, side: str) -> float:
+    padding = style.get("paddingPt", 0)
+    if isinstance(padding, dict):
+        return float(padding.get(side, 0))
+    return float(padding)
 
 
 def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
@@ -407,22 +488,34 @@ def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     box.name = obj.get("name", "text")
     tf = box.text_frame
     tf.clear()
+    style = v2_text_style(obj)
+    if style:
+        tf.margin_left = Pt(padding_pt(style, "left"))
+        tf.margin_right = Pt(padding_pt(style, "right"))
+        tf.margin_top = Pt(padding_pt(style, "top"))
+        tf.margin_bottom = Pt(padding_pt(style, "bottom"))
+        tf.word_wrap = bool(style.get("wrap", True))
     paragraph = tf.paragraphs[0]
     paragraph.text = str(obj.get("text", ""))
-    align = obj.get("align")
+    align = style.get("align", obj.get("align")) if style else obj.get("align")
     if align == "center":
         paragraph.alignment = PP_ALIGN.CENTER
     elif align == "right":
         paragraph.alignment = PP_ALIGN.RIGHT
     elif align == "left":
         paragraph.alignment = PP_ALIGN.LEFT
+    if style:
+        font_size_pt, line_height_pt = v2_text_metrics(obj, style, meta)
+        paragraph.line_spacing = Pt(line_height_pt)
+        paragraph.space_before = Pt(0)
+        paragraph.space_after = Pt(0)
     run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
     set_run_font(
         run,
-        obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
-        ppt_font_size(obj, 14),
-        bool(obj.get("bold", False)),
-        obj.get("color"),
+        style.get("fontFamily") if style else obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
+        font_size_pt if style else ppt_font_size(obj, 14),
+        bool(style.get("bold", obj.get("bold", False))) if style else bool(obj.get("bold", False)),
+        style.get("color", obj.get("color")) if style else obj.get("color"),
     )
 
 
@@ -452,28 +545,56 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     table_shape = slide.shapes.add_table(len(rows) + 1, len(columns), left, top, width, height)
     table_shape.name = obj.get("name", "table")
     table = table_shape.table
+    style = obj.get("tableStyle") if isinstance(obj.get("tableStyle"), dict) else {}
+    header_style = style.get("header") if isinstance(style.get("header"), dict) else {}
+    body_style = style.get("body") if isinstance(style.get("body"), dict) else {}
+    cell_padding = float(style.get("paddingPt", 0))
+    border_style = style.get("border") if isinstance(style.get("border"), dict) else {}
     column_widths = obj.get("columnWidths") or []
     if column_widths:
         total = sum(float(x) for x in column_widths) or 1
         for i, value in enumerate(column_widths[: len(columns)]):
             table.columns[i].width = int(width * float(value) / total)
+    row_heights = obj.get("rowHeights") or []
+    for i, row_height in enumerate(row_heights[: len(table.rows)]):
+        table.rows[i].height = px_to_emu(float(row_height), float(meta.get("height", SLIDE_H)), prs.slide_height)
     for c, heading in enumerate(columns):
         cell = table.cell(0, c)
         cell.text = str(heading)
         cell.fill.solid()
-        cell.fill.fore_color.rgb = parse_color(obj.get("headerFill"), "#172033")
+        cell.fill.fore_color.rgb = parse_color(header_style.get("fill", obj.get("headerFill")), "#172033")
+        cell.margin_left = Pt(cell_padding)
+        cell.margin_right = Pt(cell_padding)
+        cell.margin_top = Pt(cell_padding)
+        cell.margin_bottom = Pt(cell_padding)
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
-                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, True, "#ffffff")
+                set_run_font(
+                    run,
+                    header_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
+                    table_font_size(header_style, meta),
+                    bool(header_style.get("bold", True)),
+                    header_style.get("color", "#ffffff"),
+                )
     for r, row in enumerate(rows, start=1):
         for c, value in enumerate(row[: len(columns)]):
             cell = table.cell(r, c)
             cell.text = str(value)
             cell.fill.solid()
-            cell.fill.fore_color.rgb = parse_color("#f8fafc" if r % 2 == 0 else "#ffffff")
+            cell.fill.fore_color.rgb = parse_color(body_style.get("fill", "#f8fafc" if r % 2 == 0 else "#ffffff"))
+            cell.margin_left = Pt(cell_padding)
+            cell.margin_right = Pt(cell_padding)
+            cell.margin_top = Pt(cell_padding)
+            cell.margin_bottom = Pt(cell_padding)
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
-                    set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, c == 0, "#334155")
+                    set_run_font(
+                        run,
+                        body_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
+                        table_font_size(body_style, meta),
+                        bool(body_style.get("bold", c == 0)),
+                        body_style.get("color", "#334155"),
+                    )
 
 
 def apply_chart_series_colors(chart, series_configs: list[dict]) -> None:
@@ -534,7 +655,13 @@ def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type
     return frame
 
 
-def add_chart(slide, obj: dict, meta: dict, prs: Presentation) -> None:
+def add_chart(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> None:
+    if obj.get("renderMode") == "image" or obj.get("chartType") == "image":
+        source = obj.get("imageSrc") or obj.get("src")
+        if not source:
+            raise RuntimeError(f"Image-backed chart {obj.get('name', '')} has no image source")
+        add_image(slide, {**obj, "src": source}, meta, prs, root)
+        return
     chart_type_name = obj.get("chartType") or obj.get("type")
     series_configs = obj.get("series") or []
     if chart_type_name not in CHART_TYPES:
@@ -571,7 +698,8 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
             handle.write(base64.b64decode(encoded))
             image_path = Path(handle.name)
         try:
-            slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+            picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+            picture.name = obj.get("name", "image")
         finally:
             image_path.unlink(missing_ok=True)
         return
@@ -587,7 +715,8 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
             for run in paragraph.runs:
                 set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 12, False, "#64748b")
         return
-    slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    picture.name = obj.get("name", "image")
 
 
 def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
@@ -613,11 +742,12 @@ def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
             elif kind == "table":
                 add_table(slide, obj, meta, prs)
             elif kind == "chart":
-                add_chart(slide, obj, meta, prs)
+                add_chart(slide, obj, meta, prs, root)
             elif kind == "image":
                 add_image(slide, obj, meta, prs, root)
             else:
                 raise RuntimeError(f"Unsupported PPTX object type: {kind}")
+    force_ppt_theme_font(prs)
     prs.save(out_path)
 
 
