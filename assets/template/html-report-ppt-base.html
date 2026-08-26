@@ -284,6 +284,15 @@
     .html-export-choice-actions button { min-height: 36px; border: 1px solid #c9d4df; border-radius: 6px; background: #fff; color: #344054; font-weight: 700; }
     .html-export-choice-actions button[data-html-export-mode="editable"] { border-color: #2f7d73; background: #2f7d73; color: #fff; }
     .html-export-choice-cancel { justify-self: end; border: 0; background: transparent; color: #667085; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+    .preview-export-required { position: fixed; z-index: 121; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, .38); }
+    .preview-export-required[hidden] { display: none; }
+    .preview-export-required-panel { width: min(380px, 100%); display: grid; gap: 14px; padding: 20px; border: 1px solid #d5dee8; border-radius: 8px; background: #fff; box-shadow: 0 24px 60px rgba(15, 23, 42, .22); }
+    .preview-export-required-panel h4, .preview-export-required-panel p { margin: 0; }
+    .preview-export-required-panel h4 { font-size: 17px; color: var(--ink); }
+    .preview-export-required-panel p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .preview-export-required-panel button { justify-self: end; min-height: 34px; padding: 7px 12px; border: 1px solid #2f7d73; border-radius: 6px; background: #2f7d73; color: #fff; font-weight: 700; }
+    .export-preview-hint { margin: 0; color: #667085; font-size: 12px; line-height: 1.5; }
+    .export-preview-hint.is-ready { color: #17665d; }
     .drawer-footer-title { display: flex; align-items: center; gap: 8px; position: relative; }
     .drawer-body { min-height: 0; overflow-y: auto; padding: 14px 18px; display: grid; align-content: start; grid-auto-rows: max-content; gap: 12px; }
     .drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -536,13 +545,14 @@
       <div class="drawer-footer-title" data-module-icon="⇩">
         <h4>导出</h4>
         <button class="info-button" id="exportInfoButton" type="button" aria-describedby="exportInfoTooltip" aria-label="导出说明">i</button>
-        <div class="export-info-tooltip" id="exportInfoTooltip" role="tooltip">PPTX 按钮会下载当前页面的结构化 JSON。随后运行：python scripts/export_html_report.py index.html --formats pptx</div>
+        <div class="export-info-tooltip" id="exportInfoTooltip" role="tooltip">请先通过本地预览服务地址打开报告，再导出独立文件。</div>
       </div>
       <div class="export-actions">
         <button id="downloadHtml">HTML</button>
         <button id="printPdf" data-export-format="pdf">PDF</button>
         <button id="exportPpt" data-export-format="pptx">PPTX</button>
       </div>
+      <p class="export-preview-hint" data-preview-export-hint>导出独立 HTML、图片、PDF 和 PPTX 前，请通过本地预览服务地址打开报告。</p>
       <div class="drawer-about">
         <a href="https://github.com/Lucas-Fong/html-report-stable-base" target="_blank" rel="noopener">GitHub 项目</a>
         <span>Lucas Fong</span>
@@ -551,6 +561,13 @@
       </div>
     </div>
   </aside>
+  <div class="preview-export-required" id="previewExportRequired" role="alertdialog" aria-modal="true" aria-labelledby="previewExportRequiredTitle" hidden>
+    <div class="preview-export-required-panel">
+      <h4 id="previewExportRequiredTitle">请先使用本地预览服务</h4>
+      <p>当前报告以本地文件打开。请通过本地预览服务地址打开后，再导出独立 HTML、图片、PDF 或 PPTX。</p>
+      <button type="button" data-preview-export-required-close>我知道了</button>
+    </div>
+  </div>
   <div class="html-export-choice" id="htmlExportChoice" role="dialog" aria-modal="true" aria-labelledby="htmlExportChoiceTitle" hidden>
     <div class="html-export-choice-panel">
       <h4 id="htmlExportChoiceTitle">导出 HTML</h4>
@@ -1448,23 +1465,21 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       htmlExportChoice.toggleAttribute('hidden', !open);
       document.body.classList.toggle('export-dialog-open', open);
     };
-    document.getElementById('downloadHtml').onclick = () => setHtmlExportChoiceOpen(true);
+    document.getElementById('downloadHtml').onclick = () => {
+      if (!window.HTMLReportEditor?.requirePreviewService?.()) return;
+      setHtmlExportChoiceOpen(true);
+    };
     document.querySelectorAll('[data-html-export-mode]').forEach(button => {
       button.onclick = () => {
+        if (!window.HTMLReportEditor?.requirePreviewService?.()) return;
         setHtmlExportChoiceOpen(false);
         downloadStandaloneHtml(button.dataset.htmlExportMode === 'editable');
       };
     });
     document.querySelector('[data-html-export-cancel]').onclick = () => setHtmlExportChoiceOpen(false);
     htmlExportChoice.onclick = event => { if (event.target === htmlExportChoice) setHtmlExportChoiceOpen(false); };
-    document.getElementById('printPdf').onclick = () => {
-      if (window.HTMLReportEditor?.previewServiceAvailable?.()) window.HTMLReportEditor.requestInstantExport('pdf');
-      else window.print();
-    };
-    document.getElementById('exportPpt').onclick = () => {
-      if (window.HTMLReportEditor?.previewServiceAvailable?.()) window.HTMLReportEditor.requestInstantExport('pptx');
-      else window.alert('请通过本地预览地址打开报告后再导出 PPTX。');
-    };
+    document.getElementById('printPdf').onclick = () => window.HTMLReportEditor?.requestInstantExport('pdf');
+    document.getElementById('exportPpt').onclick = () => window.HTMLReportEditor?.requestInstantExport('pptx');
 
     document.addEventListener('keydown', e => {
       if (editMode && e.target.closest('[contenteditable]')) return;

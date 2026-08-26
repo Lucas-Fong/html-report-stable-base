@@ -1329,6 +1329,7 @@
   }
 
   async function downloadStandaloneHtml(preserveEditing = false) {
+    if (!requirePreviewService()) return false;
     selectElement(null);
     const clone = document.documentElement.cloneNode(true);
     removeHiddenPagesFromClone(clone);
@@ -1338,7 +1339,7 @@
       element.classList.remove('selected-element', 'selected-box', 'selected-col');
     });
     const body = clone.querySelector('body');
-    body?.classList.remove('drawer-open', 'edit-mode');
+    body?.classList.remove('drawer-open', 'edit-mode', 'preview-export-dialog-open');
     body?.classList.remove('export-dialog-open');
     if (!preserveEditing) body?.classList.add('standalone-export');
     const drawer = clone.querySelector('#styleDrawer');
@@ -1346,6 +1347,8 @@
     const toggle = clone.querySelector('#drawerToggle');
     const choice = clone.querySelector('#htmlExportChoice');
     choice?.setAttribute('hidden', '');
+    const previewExportRequired = clone.querySelector('#previewExportRequired');
+    previewExportRequired?.setAttribute('hidden', '');
     if (!preserveEditing) {
       drawer?.setAttribute('hidden', '');
       if (drawer) drawer.style.display = 'none';
@@ -1361,6 +1364,7 @@
     // may no longer treat the save action as initiated by the user's click.
     if (clone.querySelector('img[src]:not([src^="data:"])')) await inlineStandaloneAssets(clone);
     triggerStandaloneHtmlDownload(clone.outerHTML, htmlExportFileName());
+    return true;
   }
 
   function exportSnapshotHtml(syncPptxData = false) {
@@ -1375,12 +1379,13 @@
     });
     clone.querySelectorAll('.typography-label').forEach(element => element.remove());
     const body = clone.querySelector('body');
-    body?.classList.remove('drawer-open', 'edit-mode');
+    body?.classList.remove('drawer-open', 'edit-mode', 'preview-export-dialog-open');
     body?.classList.add('standalone-export');
     const drawer = clone.querySelector('#styleDrawer');
     drawer?.setAttribute('hidden', '');
     const toggle = clone.querySelector('#drawerToggle');
     toggle?.setAttribute('hidden', '');
+    clone.querySelector('#previewExportRequired')?.setAttribute('hidden', '');
     return '<!doctype html>\n' + clone.outerHTML;
   }
 
@@ -1388,11 +1393,48 @@
     return location.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(location.hostname);
   }
 
-  async function requestInstantExport(format) {
-    if (!previewServiceAvailable()) {
-      window.alert('请通过本地预览地址打开报告后再进行高保真导出。');
-      return false;
+  function setPreviewExportRequiredOpen(open) {
+    const dialog = document.getElementById('previewExportRequired');
+    if (!dialog) return;
+    dialog.toggleAttribute('hidden', !open);
+    document.body.classList.toggle('preview-export-dialog-open', open);
+  }
+
+  function refreshPreviewExportHint() {
+    const ready = previewServiceAvailable();
+    document.querySelectorAll('[data-preview-export-hint]').forEach(hint => {
+      hint.textContent = ready
+        ? '本地预览服务已连接，可导出独立 HTML、图片、PDF 和 PPTX。'
+        : '导出独立 HTML、图片、PDF 和 PPTX 前，请通过本地预览服务地址打开报告。';
+      hint.classList.toggle('is-ready', ready);
+    });
+  }
+
+  function requirePreviewService() {
+    if (previewServiceAvailable()) return true;
+    refreshPreviewExportHint();
+    const dialog = document.getElementById('previewExportRequired');
+    if (dialog) setPreviewExportRequiredOpen(true);
+    else window.alert('请通过本地预览服务地址打开报告后，再导出独立 HTML、图片、PDF 或 PPTX。');
+    return false;
+  }
+
+  function bindPreviewExportRequiredDialog() {
+    const dialog = document.getElementById('previewExportRequired');
+    if (dialog && dialog.dataset.previewExportRequiredInitialized !== 'true') {
+      dialog.querySelectorAll('[data-preview-export-required-close]').forEach(button => {
+        button.addEventListener('click', () => setPreviewExportRequiredOpen(false));
+      });
+      dialog.addEventListener('click', event => {
+        if (event.target === dialog) setPreviewExportRequiredOpen(false);
+      });
+      dialog.dataset.previewExportRequiredInitialized = 'true';
     }
+    refreshPreviewExportHint();
+  }
+
+  async function requestInstantExport(format) {
+    if (!requirePreviewService()) return false;
     const buttons = [...document.querySelectorAll(`[data-export-format="${format}"], #printPdf, #exportPpt, #downloadLongPng, #downloadLongPdf`)];
     const activeButtons = buttons.filter(button => (
       button.matches(`[data-export-format="${format}"]`) ||
@@ -1452,6 +1494,7 @@
     bindElementControls();
     bindDeleteControl();
     bindImageReplacementControl();
+    bindPreviewExportRequiredDialog();
     refreshElementControls();
     refreshDataGroupAvailability();
     window.setTimeout(applyStoredChartOptions, 0);
@@ -1498,6 +1541,8 @@
     downloadStandaloneHtml,
     exportSnapshotHtml,
     previewServiceAvailable,
+    requirePreviewService,
+    refreshPreviewExportHint,
     requestInstantExport,
     refreshGlobalControlsFromComputedTypography,
     refreshChartDataControls,

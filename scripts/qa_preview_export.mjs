@@ -107,8 +107,10 @@ try {
       .map(button => button.id || button.dataset.exportFormat),
     htmlChoice: Boolean(document.getElementById('htmlExportChoice')),
     htmlChoiceIsModal: document.getElementById('htmlExportChoice')?.getAttribute('role') === 'dialog' && !document.getElementById('htmlExportChoice')?.closest('.style-drawer'),
+    previewHint: document.querySelector('[data-preview-export-hint]')?.textContent.trim() || '',
   }));
   if (ui.width !== '320px') throw new Error(`drawer width should be 320px, received ${ui.width}`);
+  if (!ui.previewHint.includes('本地预览服务已连接')) throw new Error(`preview export availability hint is missing: ${JSON.stringify(ui)}`);
   const pptExportSets = new Set(['downloadHtml,printPdf,exportPpt', 'downloadHtml,exportImages,printPdf']);
   if (mode === 'ppt' && (!pptExportSets.has(ui.exports.join(',')) || !ui.htmlChoice || !ui.htmlChoiceIsModal)) throw new Error(`PPT export UI contract failed: ${JSON.stringify(ui)}`);
   if (mode === 'single-page' && ui.exports.join(',') !== 'downloadHtml,downloadLongPng,downloadLongPdf') throw new Error(`single export UI contract failed: ${JSON.stringify(ui)}`);

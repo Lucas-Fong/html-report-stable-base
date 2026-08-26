@@ -110,7 +110,7 @@ Browser-downloaded HTML filenames use the first visible report/cover H1. Replace
 
 ## Click-Triggered Export
 
-- Both modes use an HTML-export modal outside the drawer. `保留编辑` exports the editor entry point; `仅查看` removes it.
-- PPT footer uses `HTML / PDF / PPTX`; PDF and PPTX use the local preview service. Single-page footer uses `HTML / 图片 / PDF`; 图片与 PDF use the local preview service and are created only after the user clicks a button.
+- Both modes show a local-preview-service hint in the drawer. When the report is opened as `file://`, every export action opens an explanatory prompt and the HTML-export modal remains closed.
+- Both modes use an HTML-export modal outside the drawer after the local-preview-service check. `保留编辑` exports the editor entry point; `仅查看` removes it. PPT footer uses `HTML / PDF / PPTX`; single-page footer uses `HTML / 图片 / PDF`; every format is created only after the user clicks a button in the local preview service.
 - `scripts/start_html_report_preview.mjs <report-dir> <port>` exposes `POST /api/export`, accepting `{mode, format, html, title}`. It receives an edited DOM snapshot, creates the requested file in `exports/`, and returns a download URL.
-- When opened with `file://`, HTML export remains available. PPT PDF uses browser print as a 16:9 fallback; other high-fidelity exports must explain that the report needs to be opened through the localhost preview URL.
+- When opened with `file://`, do not export or use browser print as a fallback. Explain that the report must be opened through the localhost preview URL before exporting any format.
