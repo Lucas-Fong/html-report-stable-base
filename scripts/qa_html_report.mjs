@@ -560,6 +560,15 @@ if (mode === 'single-page') {
   }));
   if (pptState.slides > 0 && pptState.nav && pptState.pptxData && Number(pptState.scale) > 0) ok('PPT canvas, navigation, and PPTX contract remain available');
   else fail(`PPT contract failed: ${JSON.stringify(pptState)}`);
+  const renderedSlides = await page.evaluate(() => ({
+    activeIndex: [...document.querySelectorAll('section.slide')].findIndex(slide => slide.classList.contains('active-slide')),
+    visibleIndexes: [...document.querySelectorAll('section.slide')]
+      .map((slide, index) => ({ index, display: getComputedStyle(slide).display }))
+      .filter(slide => slide.display !== 'none')
+      .map(slide => slide.index),
+  }));
+  if (renderedSlides.visibleIndexes.length === 1 && renderedSlides.visibleIndexes[0] === renderedSlides.activeIndex) ok('PPT mode renders only the current slide');
+  else fail(`PPT active-slide rendering failed: ${JSON.stringify(renderedSlides)}`);
   const expectedFilename = await page.evaluate(() => window.HTMLReportEditor?.getHtmlExportFileName?.());
   const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
   const exportedSlideCount = await exported.locator('.slide').count();
