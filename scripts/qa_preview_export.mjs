@@ -110,7 +110,7 @@ try {
       postedSnapshot = route.request().postData() || '';
       await route.continue();
     });
-    await page.locator('.slide.active-slide [data-pptx-name], .slide.active-slide .editable').first().evaluate((element, text) => {
+    await page.locator('.slide.active-slide [data-pptx-name][data-editable-element="text"], .slide.active-slide .editable[data-editable-element="text"]').first().evaluate((element, text) => {
       element.textContent = text;
     }, updatedText);
     const [pdfDownload] = await Promise.all([
