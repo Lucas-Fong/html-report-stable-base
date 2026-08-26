@@ -204,6 +204,7 @@ const pageVisibility = await page.evaluate(reportMode => {
       exportSectionCount: exported.querySelectorAll('.report-section').length,
     };
   }
+  const slideCountBeforeHide = document.querySelectorAll('.slide').length;
   window.goTo(1);
   input.checked = false;
   input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -217,6 +218,8 @@ const pageVisibility = await page.evaluate(reportMode => {
     visiblePageNumbers: [...document.querySelectorAll('.slide:not([data-page-hidden="true"]) .page-number')].map(node => node.textContent.trim()),
     exportSlideCount: exported.querySelectorAll('.slide').length,
     exportJsonSlideCount: deck.slides.length,
+    expectedVisibleSlideCount: slideCountBeforeHide - 1,
+    expectedPageNumbers: Array.from({ length: slideCountBeforeHide - 1 }, (_, index) => String(index + 1).padStart(2, '0')),
   };
 }, mode);
 if (pageVisibility.missing) {
@@ -224,7 +227,7 @@ if (pageVisibility.missing) {
 } else if (mode === 'single-page') {
   if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
   else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
-} else if (pageVisibility.hidden && pageVisibility.navCount === 2 && pageVisibility.visiblePageNumbers.join(',') === '01,02' && pageVisibility.exportSlideCount === 2 && pageVisibility.exportJsonSlideCount === 2) {
+} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedVisibleSlideCount && pageVisibility.visiblePageNumbers.join(',') === pageVisibility.expectedPageNumbers.join(',') && pageVisibility.exportSlideCount === pageVisibility.expectedVisibleSlideCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedVisibleSlideCount) {
   ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
 } else {
   fail(`PPT visibility failed: ${JSON.stringify(pageVisibility)}`);
@@ -557,11 +560,12 @@ if (mode === 'single-page') {
   }));
   if (pptState.slides > 0 && pptState.nav && pptState.pptxData && Number(pptState.scale) > 0) ok('PPT canvas, navigation, and PPTX contract remain available');
   else fail(`PPT contract failed: ${JSON.stringify(pptState)}`);
+  const expectedFilename = await page.evaluate(() => window.HTMLReportEditor?.getHtmlExportFileName?.());
   const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
   const exportedSlideCount = await exported.locator('.slide').count();
   await exported.close();
-  if (suggestedFilename === '底座功能验证.html' && exportedSlideCount === 2) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
-  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, exportedSlideCount })}`);
+  if (suggestedFilename === expectedFilename && exportedSlideCount === pageVisibility.expectedVisibleSlideCount) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
+  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, expectedFilename, exportedSlideCount, expectedVisibleSlideCount: pageVisibility.expectedVisibleSlideCount })}`);
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });
