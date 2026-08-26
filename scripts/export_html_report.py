@@ -617,6 +617,36 @@ def apply_chart_series_colors(chart, series_configs: list[dict]) -> None:
             pass
 
 
+def normalize_chart_axis_ids(chart, shape_id: int) -> None:
+    """Write OOXML-valid unsigned axis IDs for native category charts.
+
+    python-pptx may serialize its internally generated axis IDs as signed
+    integers. PowerPoint tolerates that, but strict OOXML readers reject it.
+    """
+    axes = []
+    for axis_name in ("category_axis", "value_axis"):
+        try:
+            axes.append(getattr(chart, axis_name)._element)
+        except (AttributeError, ValueError):
+            continue
+    if len(axes) != 2:
+        return
+    first_id = 1_000_000 + max(1, int(shape_id)) * 2
+    axis_ids = (first_id, first_id + 1)
+    replacements = {}
+    for index, axis in enumerate(axes):
+        ax_id = axis.find(qn("c:axId"))
+        cross_ax = axis.find(qn("c:crossAx"))
+        if ax_id is not None:
+            replacements[ax_id.get("val")] = str(axis_ids[index])
+            ax_id.set("val", str(axis_ids[index]))
+        if cross_ax is not None:
+            cross_ax.set("val", str(axis_ids[1 - index]))
+    for ax_id in chart._element.iter(qn("c:axId")):
+        if ax_id.get("val") in replacements:
+            ax_id.set("val", replacements[ax_id.get("val")])
+
+
 def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type_name: str, series_configs: list[dict], name_suffix: str = "", overlay: bool = False):
     chart_type = CHART_TYPES.get(chart_type_name)
     if not chart_type:
@@ -640,6 +670,7 @@ def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type
         chart.legend.position = XL_LEGEND_POSITION.BOTTOM if chart_type_name != "pie" else XL_LEGEND_POSITION.RIGHT
         chart.legend.include_in_layout = False
     apply_chart_series_colors(chart, series_configs)
+    normalize_chart_axis_ids(chart, frame.shape_id)
     if overlay:
         chart.has_legend = False
         try:

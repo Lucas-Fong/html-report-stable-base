@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import subprocess
 import sys
 import tempfile
@@ -158,6 +159,57 @@ def test_json_exports_editable_table_and_chart() -> None:
             assert_true("<c:lineChart>" in chart_xml, "mixed chart must keep line series as line chart")
             assert_true("6F1022" in chart_xml.upper(), "bar series color must be written to chart XML")
             assert_true("C9A15B" in chart_xml.upper(), "line series color must be written to chart XML")
+            axis_ids = re.findall(r'<c:(?:axId|crossAx) val="([^"]+)"', chart_xml)
+            assert_true(axis_ids and all(0 <= int(axis_id) <= 2**32 - 1 for axis_id in axis_ids), "chart axis IDs must be valid unsigned 32-bit integers")
+
+
+def test_template_sync_preserves_v2_native_chart_type() -> None:
+    """Browser-side DOM sync must not downgrade a v2 native chart to ECharts."""
+    deck = {
+        "pptxContractVersion": 2,
+        "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+        "slides": [{
+            "title": "同步原生图表",
+            "objects": [{
+                "type": "chart",
+                "name": "native-chart",
+                "frame": {"x": 760, "y": 210, "w": 480, "h": 300},
+                "chartType": "bar",
+                "categories": ["第一周", "第二周"],
+                "series": [{"name": "得分", "type": "bar", "values": [62, 78], "color": "#2f6f68"}],
+            }],
+        }],
+    }
+    chart = (
+        '<div class="chart" data-editable-element="chart" data-pptx-name="native-chart" '
+        'data-chart-data="{&quot;categories&quot;:[&quot;第一周&quot;,&quot;第二周&quot;],&quot;series&quot;:[{&quot;name&quot;:&quot;得分&quot;,&quot;type&quot;:&quot;bar&quot;,&quot;values&quot;:[62,78],&quot;color&quot;:&quot;#2f6f68&quot;}]}" '
+        'style="position:absolute;left:760px;top:210px;width:480px;height:300px"></div>'
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        source = TEMPLATE.read_text(encoding="utf-8")
+        source = re.sub(
+            r'<script id="html-pptx-data" type="application/json">.*?</script>',
+            '<script id="html-pptx-data" type="application/json">\n'
+            + json.dumps(deck, ensure_ascii=False)
+            + "\n</script>",
+            source,
+            count=1,
+            flags=re.DOTALL,
+        )
+        source = source.replace('<div class="foot">', chart + '<div class="foot">', 1)
+        html.write_text(source, encoding="utf-8")
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            chart_xml = "\n".join(
+                archive.read(name).decode("utf-8")
+                for name in archive.namelist()
+                if name.startswith("ppt/charts/chart") and name.endswith(".xml")
+            )
+            assert_true("<c:barChart>" in chart_xml, "DOM sync must preserve native v2 bar charts")
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true("图表未嵌入" not in slide_xml, "native v2 chart must not degrade to a placeholder")
 
 
 def test_fixed_header_footer_page_number_fonts() -> None:
@@ -401,6 +453,7 @@ def main() -> int:
         test_template_has_json_contract,
         test_pptx_requires_json_contract,
         test_json_exports_editable_table_and_chart,
+        test_template_sync_preserves_v2_native_chart_type,
         test_fixed_header_footer_page_number_fonts,
         test_v2_text_uses_explicit_point_metrics_and_zero_padding,
         test_v2_table_uses_explicit_cell_font_sizes,

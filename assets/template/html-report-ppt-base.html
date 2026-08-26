@@ -1247,10 +1247,11 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
 
     function syncObjectGeometry(obj, element, slide) {
       const rect = elementRectInSlide(element, slide);
-      obj.x = rect.x;
-      obj.y = rect.y;
-      obj.w = rect.w;
-      obj.h = rect.h;
+      const frame = obj.frame && typeof obj.frame === 'object' ? obj.frame : obj;
+      frame.x = rect.x;
+      frame.y = rect.y;
+      frame.w = rect.w;
+      frame.h = rect.h;
       const style = getComputedStyle(element);
       if (obj.type === 'shape') {
         obj.fill = style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' ? style.backgroundColor : obj.fill;
@@ -1396,8 +1397,26 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
             if (headerCell) obj.headerFontSize = Math.round(pxNumber(getComputedStyle(headerCell).fontSize, 14));
           }
           if (obj.type === 'chart') {
-            obj.chartType = 'echarts';
-            obj.chartData = element.dataset.chartData || obj.chartData || '';
+            const chartData = element.dataset.chartData || obj.chartData || '';
+            const nativeChartTypes = ['bar', 'column', 'line', 'pie'];
+            if (chartData) {
+              try {
+                const parsed = JSON.parse(chartData);
+                if (Array.isArray(parsed.categories)) obj.categories = parsed.categories;
+                if (Array.isArray(parsed.series)) {
+                  obj.series = parsed.series.map(series => ({
+                    ...series,
+                    values: Array.isArray(series.values) ? series.values : (Array.isArray(series.data) ? series.data : [])
+                  }));
+                }
+              } catch (_) {
+                // ECharts option data may be intentionally opaque; retain it for image fallback.
+              }
+            }
+            if (!nativeChartTypes.includes(obj.chartType) && obj.renderMode !== 'image' && obj.chartType !== 'image') {
+              obj.chartType = 'echarts';
+            }
+            obj.chartData = chartData;
             obj.chartOption = element.dataset.chartOption || obj.chartOption || '';
           }
           if (obj.type === 'image') {
