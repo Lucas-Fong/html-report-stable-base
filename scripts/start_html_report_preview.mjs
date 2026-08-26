@@ -213,6 +213,32 @@ async function capturePptPdf(snapshotPath, finalPath) {
   });
 }
 
+async function capturePptPngs(snapshotPath, prefix) {
+  const timestamp = Date.now();
+  return withPage({ viewport: { width: 1440, height: 810 }, deviceScaleFactor: 2 }, async page => {
+    await page.goto(pathToFileURL(snapshotPath).href, { waitUntil: 'networkidle' });
+    await page.evaluate(() => {
+      window.setEditMode?.(false);
+      window.HTMLReportEditor?.selectElement?.(null);
+      document.querySelectorAll('.typography-label').forEach(label => label.remove());
+      document.body.classList.remove('drawer-open', 'edit-mode');
+      document.body.classList.add('standalone-export', 'ppt-mode');
+    });
+    await page.waitForTimeout(250);
+    const slideCount = await page.evaluate(() => document.querySelectorAll('.slide').length);
+    const files = [];
+    for (let index = 0; index < slideCount; index += 1) {
+      await page.evaluate(i => window.goTo ? window.goTo(i) : document.querySelectorAll('.slide')[i]?.scrollIntoView(), index);
+      await page.waitForTimeout(120);
+      const fileName = `${prefix}-${timestamp}-${String(index + 1).padStart(2, '0')}.png`;
+      const finalPath = path.join(exportDir, fileName);
+      writeFileSync(finalPath, await page.locator('.slide.active-slide').screenshot({ type: 'png', animations: 'disabled', caret: 'hide' }));
+      files.push(fileName);
+    }
+    return files;
+  });
+}
+
 function extractPptxData(snapshotPath, jsonPath) {
   const html = readFileSync(snapshotPath, 'utf8');
   const match = html.match(/<script[^>]+id=["']html-pptx-data["'][^>]*>([\s\S]*?)<\/script>/i);
@@ -226,7 +252,7 @@ async function createExport(payload) {
   if (!['ppt', 'single-page'].includes(mode)) throw new Error('报告模式无效。');
   if (!['pdf', 'pptx', 'png'].includes(format)) throw new Error('导出格式无效。');
   if (typeof html !== 'string' || !html.includes(`data-report-mode="${mode}"`)) throw new Error('当前页面快照无效。');
-  if (mode === 'ppt' && !['pdf', 'pptx'].includes(format)) throw new Error('PPT 仅支持 PDF 或 PPTX 即时导出。');
+  if (mode === 'ppt' && !['pdf', 'pptx', 'png'].includes(format)) throw new Error('PPT 仅支持 PDF、图片或 PPTX 即时导出。');
   if (mode === 'single-page' && !['png', 'pdf'].includes(format)) throw new Error('滚动报告仅支持图片或 PDF 即时导出。');
 
   const token = randomUUID();
@@ -239,6 +265,9 @@ async function createExport(payload) {
         const finalName = `${prefix}-${Date.now()}.pdf`;
         await capturePptPdf(snapshotPath, path.join(exportDir, finalName));
         return finalName;
+      }
+      if (format === 'png') {
+        return await capturePptPngs(snapshotPath, prefix);
       }
       const script = path.join(skillRoot, 'scripts', 'export_html_report.py');
       const deckJsonPath = path.join(root, `.html-report-export-${token}.json`);
@@ -276,9 +305,16 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (url.pathname === '/api/export' && req.method === 'POST') {
-      const fileName = await createExport(await readJson(req));
+      const output = await createExport(await readJson(req));
+      const fileNames = Array.isArray(output) ? output : [output];
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({ ok: true, fileName, downloadUrl: `/api/download?file=${encodeURIComponent(fileName)}` }));
+      res.end(JSON.stringify({
+        ok: true,
+        fileName: fileNames[0],
+        fileNames,
+        downloadUrl: `/api/download?file=${encodeURIComponent(fileNames[0])}`,
+        downloadUrls: fileNames.map(fileName => `/api/download?file=${encodeURIComponent(fileName)}`),
+      }));
       return;
     }
     if (url.pathname === '/api/download') {

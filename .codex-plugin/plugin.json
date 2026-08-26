@@ -1,6 +1,6 @@
 {
   "name": "html-report-stable-base",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Build stable editable HTML reports, ECharts charts, and word-cloud assets with style controls, QA, and exports.",
   "author": {
     "name": "Lucas Fong",

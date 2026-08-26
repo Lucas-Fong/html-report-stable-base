@@ -14,7 +14,7 @@ Provide a content-neutral HTML report foundation. The calling skill, existing re
 Every new report must explicitly use one mode:
 
 - `single-page`: one vertically scrolling, fluid HTML report. It supports editing, standalone HTML export, and click-triggered long PNG / one-page long PDF export through the local preview service.
-- `ppt`: a slide deck with a fixed `1440 × 810` canvas, navigation, optional adaptive browsing, `html-pptx-data`, and click-triggered PDF/PPTX export through the local preview service. The PDF button exports the current edited browser snapshot, with each `.slide` captured as one PDF page.
+- `ppt`: a slide deck with a fixed `1440 × 810` canvas, navigation, optional adaptive browsing, `html-pptx-data`, and click-triggered PNG/PDF/PPTX export through the local preview service. The PNG button exports one image per `.slide`; the PDF button exports the current edited browser snapshot, with each `.slide` captured as one PDF page.
 
 If the calling skill or model already declares the mode, use it. Otherwise ask the calling skill or user before generating files. Do not infer or default the mode.
 
@@ -56,7 +56,7 @@ Supported independent controls:
 | `text` | width, height, font size, color, weight, alignment, line-height, background, border color/width, radius |
 | `shape` | width, height, fill, border color/width, radius |
 | `chart` | width and height; call the ECharts instance `resize()` after changes; ECharts data JSON editor for `categories` / `series` and advanced `{ "option": {...} }` updates |
-| `image` | width and height; preserve its source and existing object-fit/aspect behavior |
+| `image` | width and height; after choosing a local replacement for the selected real `<img>`, open a crop step whose frame matches the image's rendered aspect ratio; apply the cropped result as an inline data URL while preserving the target's object-fit/aspect behavior in standalone HTML and exports |
 
 Only one element may be selected. Independent styles are written inline and override global variables only for that element. Width edits must work for inline text, flex children, and elements constrained by `max-width`; the editor may set `display:inline-block`, a matching flex basis, and `max-width:none` on the selected element. Do not add free dragging or absolute-position controls.
 
@@ -156,6 +156,8 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
 - Edit mode must show H1/H2/H3/H4/metric/body/note typography labels for report content. Metric labels and descriptions remain body text; only metric values use the metric level.
 - Keep `HTML / 图片 / PDF` export buttons. HTML must use the same modal choice as PPT: `保留编辑` or `仅查看`. 图片与 PDF 必须由用户点击后通过本地预览服务即时生成，不得在生成阶段预产出。Do not include PPTX, `html-pptx-data`, `data-pptx-name`, or PPT geometry sync.
 - The exported delivery HTML must retain all user edits, selected section navigation style, inline local CSS/JS/images/data, and hide the drawer and gear.
+- In edit mode, `浏览与模式` must expose `#currentPageVisible` for the section currently in view and `#restoreHiddenPages`. Hidden sections are removed from section navigation and every export snapshot; never allow all sections to be hidden.
+- Name browser-downloaded HTML from the first visible report section's H1. Sanitize filesystem-invalid characters, cap the stem at 72 Unicode characters, and fall back to `document.title` / `html-report` when no cover H1 is available.
 - Long PNG/PDF exports must be generated from Chromium's native `#report` screenshot path, not SVG `foreignObject`, so they match the browser rendering and avoid print truncation.
 
 ### PPT
@@ -164,9 +166,11 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
 - Keep the fixed `1440 × 810` canvas, equal left/right margins, page navigation, PPT/adaptive browsing, table column controls, and geometry scaling.
 - The PPT/adaptive toggle uses a compact presentation-canvas icon, not a Unicode box-character icon.
 - Keep `html-pptx-data`, unique per-slide object names, DOM-to-JSON synchronization, and editable PPTX export.
-- Keep `HTML / PDF / PPTX` export buttons. HTML must let the user choose `保留编辑` or `仅查看`; PDF and PPTX are generated only after the user clicks them in the local preview service. PDF/PPTX clicks must first synchronize DOM edits into `html-pptx-data`, submit the current `documentElement` snapshot to `/api/export`, and write outputs into `<output>/exports/`; PDF output must contain exactly one page per `.slide`.
+- Keep `HTML / 图片 / PDF / PPTX` export buttons. HTML must let the user choose `保留编辑` or `仅查看`; PNG, PDF and PPTX are generated only after the user clicks them in the local preview service. Export clicks must first synchronize DOM edits into `html-pptx-data`, submit the current `documentElement` snapshot to `/api/export`, and write outputs into `<output>/exports/`; PNG output must contain exactly one `1440×810` image per `.slide`, while PDF output must contain exactly one page per `.slide`.
 - Page furniture such as kickers, footers, and page numbers remains fixed, non-editable, and `12px`/`12pt`.
 - Browser standalone HTML export must preserve edits and charts while hiding the drawer and gear.
+- In edit mode, `浏览与模式` must expose `#currentPageVisible` and `#restoreHiddenPages`. A hidden page is unavailable from normal navigation and all export snapshots (HTML/PNG/PDF/PPTX); remaining visible `.page-number` footers are renumbered from `01` without gaps. Keep at least one page visible. While editing, hidden pages may remain reachable only so the author can restore them.
+- Name browser-downloaded HTML from the first visible cover H1 using the same sanitized, 72-Unicode-character filename rule as single-page mode.
 
 ## Workflow
 
@@ -175,7 +179,7 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
 3. Build from the matching template and model, or preserve an existing report while adding the matching shell. For existing HTML, use the adaptation fast path reference first.
 4. Add `.editable` to text content and `data-editable-element` to independently styled elements.
 5. Use real `<table>` markup for every table-like matrix/list comparison. Style it to look like a card or divider-only pseudo table when desired, but do not use div-only pseudo tables for editable table content.
-6. In PPT mode, keep visible objects and `html-pptx-data` synchronized with `data-pptx-name`.
+6. In PPT mode, keep visible objects and `html-pptx-data` synchronized with `data-pptx-name`; exclude hidden pages from snapshot/export JSON and renumber visible footer page numbers.
 7. If any important content may have been missed, use the drawer's `补充识别` module in either mode: click `选择页面元素`, click the page element, then mark it as `文本` / `矩形` / `图表` / `图片` / `表格`.
 8. If dependencies are missing in a newly installed environment, bootstrap them once:
 
@@ -223,7 +227,7 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
    python <skill-root>/scripts/export_html_report.py <output>/index.html --out-dir <output>/exports --formats html
    ```
 
-   PPT mode may additionally request `pdf,pptx`.
+   PPT mode may additionally request `png,pdf,pptx`; PNG exports one image per slide.
 
 15. For scripted, non-interactive single-page long image/PDF exports only, use Chromium screenshot export:
 
@@ -259,6 +263,8 @@ Block delivery when any applicable check fails:
 - single-page edit mode lacks any of the seven typography labels (L1/L2/L3/L4/指标/正文/备注), or metric labels/descriptions follow metric sizing instead of body sizing;
 - a drawer module lacks its icon, reset/delete behavior is unavailable, edit mode does not use `编辑模式` / `保存修改`, closing the drawer while editing does not first save/exit edit mode, global typography inputs do not start from the page's computed sizes, or constrained inline/flex/max-width element dimensions cannot be changed;
 - either mode lacks the task-oriented drawer groups, group help text, or the GitHub/author/license/copyright footer information;
+- a selected image lacks a local-file replacement and crop path, its crop frame does not match the rendered image ratio, replacement changes a different image or its display geometry, or the cropped replacement is not retained in standalone HTML / PPT DOM synchronization;
+- the current-page visibility control is unavailable in edit mode, all pages can be hidden, a hidden page remains in navigation or an export snapshot, PPT visible footer page numbers do not renumber consecutively, or downloaded HTML does not use the visible cover title as a safe filename;
 - the drawer is wider than `320px`, global controls use a slider or bounded numeric input, the PPT/adaptive toggle lacks its presentation icon, export buttons do not match their mode, either mode's HTML export lacks its modal editability choice, PPT PDF export does not submit the updated browser snapshot, PPT PDF output does not contain one page per slide, or preview-service exports do not reflect the submitted page snapshot;
 - color controls lack a pasted HEX path, or a valid HEX value fails to update only the selected element;
 - the `补充识别` module is unavailable in either mode, cannot mark unrecognized text as editable text, or cannot mark a real table's cells as editable;

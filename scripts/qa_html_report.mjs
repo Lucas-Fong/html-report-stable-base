@@ -19,6 +19,10 @@ const htmlPath = path.resolve(target);
 const failures = [];
 const fail = message => { failures.push(message); console.error(`[FAIL] ${message}`); };
 const ok = message => console.log(`[OK] ${message}`);
+const documentImageBuffer = () => Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4HwAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 async function exportStandalone(page, browser, outputName = 'single.html') {
   const exportAction = async () => {
@@ -32,7 +36,7 @@ async function exportStandalone(page, browser, outputName = 'single.html') {
   const exported = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   await exported.goto(pathToFileURL(exportedPath).href);
   await exported.waitForLoadState('networkidle');
-  return exported;
+  return { exported, suggestedFilename: download.suggestedFilename() };
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -182,6 +186,55 @@ await page.waitForTimeout(100);
 if (await page.evaluate(() => document.body.classList.contains('edit-mode'))) ok('edit mode opens');
 else fail('edit mode did not open');
 
+const pageVisibility = await page.evaluate(reportMode => {
+  const input = document.getElementById('currentPageVisible');
+  if (!input) return { missing: true };
+  if (reportMode === 'single-page') {
+    const sections = [...document.querySelectorAll('.report-section')];
+    sections[1]?.scrollIntoView({ block: 'start' });
+    window.dispatchEvent(new Event('scroll'));
+    input.checked = false;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    const snapshot = window.HTMLReportEditor.exportSnapshotHtml();
+    const exported = new DOMParser().parseFromString(snapshot, 'text/html');
+    return {
+      hidden: sections[1]?.dataset.pageHidden === 'true',
+      navCount: document.querySelectorAll('#sectionNav a').length,
+      visibleSectionCount: [...sections].filter(section => section.dataset.pageHidden !== 'true').length,
+      exportSectionCount: exported.querySelectorAll('.report-section').length,
+    };
+  }
+  window.goTo(1);
+  input.checked = false;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  document.getElementById('editToggle').click();
+  const snapshot = window.HTMLReportEditor.exportSnapshotHtml(true);
+  const exported = new DOMParser().parseFromString(snapshot, 'text/html');
+  const deck = JSON.parse(exported.getElementById('html-pptx-data').textContent);
+  return {
+    hidden: document.querySelectorAll('.slide')[1]?.dataset.pageHidden === 'true',
+    navCount: document.querySelectorAll('#nav button').length,
+    visiblePageNumbers: [...document.querySelectorAll('.slide:not([data-page-hidden="true"]) .page-number')].map(node => node.textContent.trim()),
+    exportSlideCount: exported.querySelectorAll('.slide').length,
+    exportJsonSlideCount: deck.slides.length,
+  };
+}, mode);
+if (pageVisibility.missing) {
+  fail('current page visibility control is missing');
+} else if (mode === 'single-page') {
+  if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
+  else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
+} else if (pageVisibility.hidden && pageVisibility.navCount === 2 && pageVisibility.visiblePageNumbers.join(',') === '01,02' && pageVisibility.exportSlideCount === 2 && pageVisibility.exportJsonSlideCount === 2) {
+  ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
+} else {
+  fail(`PPT visibility failed: ${JSON.stringify(pageVisibility)}`);
+}
+
+if (mode === 'ppt' && !pageVisibility.missing) {
+  await page.click('#editToggle');
+  await page.evaluate(() => window.goTo(0));
+}
+
 const repeatedInitResult = await page.evaluate(() => {
   let resizeEvents = 0;
   const onResize = () => { resizeEvents += 1; };
@@ -242,6 +295,82 @@ const imageResult = await page.evaluate(() => {
 if (imageResult.skipped) ok('image check skipped: no image element');
 else if (imageResult.width === '321px') ok('image width updates');
 else fail(`image size failed: ${JSON.stringify(imageResult)}`);
+
+const replacementImage = documentImageBuffer();
+const replacementInput = page.locator('#replaceImageInput');
+if (imageResult.skipped) {
+  ok('image replacement check skipped: no image element');
+} else if (await replacementInput.count() !== 1) {
+  fail('image replacement control is missing');
+} else {
+  const imageBeforeReplacement = await page.evaluate(() => {
+    const image = document.querySelector('[data-editable-element="image"]');
+    const style = getComputedStyle(image);
+    return {
+      src: image.getAttribute('src'),
+      objectFit: style.objectFit,
+      objectPosition: style.objectPosition,
+      width: style.width,
+      height: style.height,
+    };
+  });
+  const [fileChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.click('#replaceImageTrigger'),
+  ]);
+  await fileChooser.setFiles({
+    name: 'replacement.png',
+    mimeType: 'image/png',
+    buffer: replacementImage,
+  });
+  const cropDialogState = await page.waitForFunction(() => {
+    const dialog = document.getElementById('imageCropDialog');
+    return dialog && !dialog.hidden;
+  }, null, { timeout: 1200 }).then(async () => page.evaluate(() => {
+    const dialog = document.getElementById('imageCropDialog');
+    const image = document.querySelector('[data-editable-element="image"]');
+    const preview = document.getElementById('imageCropPreview');
+    const rect = image.getBoundingClientRect();
+    return {
+      open: Boolean(dialog && !dialog.hidden),
+      sourceUnchanged: image.getAttribute('src') === dialog.dataset.originalSrc,
+      cropAspect: Number(dialog.dataset.cropAspect),
+      displayAspect: rect.width / rect.height,
+      previewExists: Boolean(preview),
+    };
+  })).catch(() => null);
+  if (!cropDialogState || !cropDialogState.open || !cropDialogState.previewExists || !cropDialogState.sourceUnchanged || Math.abs(cropDialogState.cropAspect - cropDialogState.displayAspect) > 0.02) {
+    fail(`image crop dialog failed: ${JSON.stringify(cropDialogState)}`);
+  } else {
+    ok('image replacement opens a crop dialog that matches the display aspect ratio');
+  }
+  if (cropDialogState?.open) await page.click('#applyImageCrop');
+  await page.waitForFunction(() => document.querySelector('[data-editable-element="image"]')?.getAttribute('src')?.startsWith('data:image/png;base64,'));
+  const imageAfterReplacement = await page.evaluate(reportMode => {
+    const image = document.querySelector('[data-editable-element="image"]');
+    const style = getComputedStyle(image);
+    let pptxSource = '';
+    if (reportMode === 'ppt') {
+      const deck = JSON.parse(document.getElementById('html-pptx-data').textContent);
+      pptxSource = deck.slides.flatMap(slide => slide.objects).find(object => object.name === image.dataset.pptxName)?.src || '';
+    }
+    return {
+      src: image.getAttribute('src'),
+      objectFit: style.objectFit,
+      objectPosition: style.objectPosition,
+      width: style.width,
+      height: style.height,
+      selected: image.classList.contains('selected-element'),
+      pptxSource,
+    };
+  }, mode);
+  const sourceUpdated = imageAfterReplacement.src?.startsWith('data:image/png;base64,');
+  const geometryPreserved = ['objectFit', 'objectPosition', 'width', 'height']
+    .every(property => imageAfterReplacement[property] === imageBeforeReplacement[property]);
+  const pptxPreserved = mode !== 'ppt' || imageAfterReplacement.pptxSource === imageAfterReplacement.src;
+  if (sourceUpdated && geometryPreserved && imageAfterReplacement.selected && pptxPreserved) ok('image replacement inlines the selected local file and preserves display geometry');
+  else fail(`image replacement failed: ${JSON.stringify({ imageBeforeReplacement, imageAfterReplacement, sourceUpdated, geometryPreserved, pptxPreserved })}`);
+}
 
 const chartResult = await page.evaluate(() => {
   const chart = document.querySelector('[data-editable-element="chart"]');
@@ -384,8 +513,8 @@ if (mode === 'single-page') {
     if (!(await page.locator('#styleDrawer').evaluate(element => element.classList.contains('open')))) await page.click('#drawerToggle');
     await page.evaluate(() => window.HTMLReportEditor?.openDrawerGroupByIntent?.('navigation'));
     await page.click(`[data-section-nav-style="${style}"]`);
-    const exported = await exportStandalone(page, browser, `${style}.html`);
-    exportedStates[style] = await exported.evaluate(expectedStyle => ({
+    const { exported, suggestedFilename } = await exportStandalone(page, browser, `${style}.html`);
+    exportedStates[style] = await exported.evaluate(({ expectedStyle, fileName }) => ({
       drawer: getComputedStyle(document.getElementById('styleDrawer')).display,
       toggle: getComputedStyle(document.getElementById('drawerToggle')).display,
       standalone: document.body.classList.contains('standalone-export'),
@@ -394,7 +523,9 @@ if (mode === 'single-page') {
       sectionNavItems: [...document.querySelectorAll('#sectionNav a')].map(link => link.textContent),
       visibleTopText: [...document.body.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).map(node => node.textContent.trim()),
       textStyle: getComputedStyle(document.querySelector('[data-editable-element="text"]')).fontSize,
-    }), style);
+      imageSource: document.querySelector('[data-editable-element="image"]')?.getAttribute('src') || '',
+      fileName,
+    }), { expectedStyle: style, fileName: suggestedFilename });
     await exported.close();
   }
   const allExportsClean = Object.values(exportedStates).every(state => (
@@ -411,6 +542,12 @@ if (mode === 'single-page') {
   const allElementStylesPreserved = Object.values(exportedStates).every(state => state.textStyle === '31px');
   if (allElementStylesPreserved) ok('standalone HTML preserves element style edits');
   else fail(`standalone HTML lost element styles: ${JSON.stringify(exportedStates)}`);
+  const allReplacementImagesPreserved = Object.values(exportedStates).every(state => state.imageSource.startsWith('data:image/png;base64,'));
+  if (allReplacementImagesPreserved) ok('standalone HTML preserves replaced images');
+  else fail(`standalone HTML lost replaced images: ${JSON.stringify(exportedStates)}`);
+  const allNamesUseCoverTitle = Object.values(exportedStates).every(state => state.fileName === '底座功能验证.html');
+  if (allNamesUseCoverTitle) ok('single-page HTML export uses the cover title as its filename');
+  else fail(`single-page HTML export filename failed: ${JSON.stringify(exportedStates)}`);
 } else if (mode === 'ppt') {
   const pptState = await page.evaluate(() => ({
     slides: document.querySelectorAll('section.slide').length,
@@ -420,6 +557,11 @@ if (mode === 'single-page') {
   }));
   if (pptState.slides > 0 && pptState.nav && pptState.pptxData && Number(pptState.scale) > 0) ok('PPT canvas, navigation, and PPTX contract remain available');
   else fail(`PPT contract failed: ${JSON.stringify(pptState)}`);
+  const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
+  const exportedSlideCount = await exported.locator('.slide').count();
+  await exported.close();
+  if (suggestedFilename === '底座功能验证.html' && exportedSlideCount === 2) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
+  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, exportedSlideCount })}`);
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });

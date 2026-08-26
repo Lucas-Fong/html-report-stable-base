@@ -77,6 +77,9 @@
       width: 100%;
       display: flex;
     }
+    .slide[data-page-hidden="true"] { display: none !important; }
+    body.edit-mode .slide[data-page-hidden="true"].active-slide { display: flex !important; opacity: .48; }
+    .nav button.is-hidden-page { opacity: .45; text-decoration: line-through; }
     .cover, .thanks {
       justify-content: center;
       color: var(--ink);
@@ -440,6 +443,9 @@
         <button type="button" data-nav-style="dots">小圆点</button>
         <button type="button" data-nav-style="numbered" class="active">序号</button>
       </div>
+      <label class="page-visibility-control"><span>当前页</span><input class="edit-only" id="currentPageVisible" type="checkbox" checked><span>展示</span></label>
+      <button class="full-btn edit-only" id="restoreHiddenPages" type="button">恢复全部隐藏页</button>
+      <div class="drawer-note page-visibility-status" id="pageVisibilityStatus">隐藏页面不会出现在导航或导出文件中，页脚页码会自动重排。</div>
     </div>
     <div class="control-group" data-drawer-intent="global">
       <h4>全局样式</h4>
@@ -468,6 +474,12 @@
         <h5>元素尺寸</h5>
         <label class="control-row"><span>宽度</span><input class="edit-only" id="elementWidth" type="number" min="20"><span>px</span></label>
         <label class="control-row"><span>高度</span><input class="edit-only" id="elementHeight" type="number" min="20"><span>px</span></label>
+      </div>
+      <div class="drawer-subgroup element-control-group" data-element-types="image" hidden>
+        <h5>图片来源</h5>
+        <button class="full-btn edit-only" id="replaceImageTrigger" type="button">替换图片</button>
+        <input class="image-replacement-input edit-only" id="replaceImageInput" type="file" accept="image/*" aria-label="选择替换图片">
+        <div class="drawer-note image-replacement-status" id="imageReplacementStatus">选择本地图片后会内嵌到报告，导出时保留替换结果。</div>
       </div>
       <div class="drawer-subgroup element-control-group" data-element-types="text" hidden>
         <h5>文本样式</h5>
@@ -758,15 +770,100 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     let selectedTable = null;
     let selectedColIndex = null;
 
-    slides.forEach((slide, i) => {
-      const button = document.createElement('button');
-      button.textContent = String(i + 1).padStart(2, '0');
-      button.title = slide.dataset.title || `Page ${i + 1}`;
-      button.setAttribute('aria-label', button.title);
-      button.onclick = () => goTo(i);
-      nav.appendChild(button);
-    });
-    const buttons = [...nav.querySelectorAll('button')];
+    let buttons = [];
+
+    function isSlideHidden(slide) {
+      return slide?.dataset.pageHidden === 'true';
+    }
+
+    function navigableSlideIndexes() {
+      return slides
+        .map((slide, index) => ({ slide, index }))
+        .filter(({ slide }) => editMode || !isSlideHidden(slide))
+        .map(({ index }) => index);
+    }
+
+    function closestNavigableSlideIndex(index) {
+      const candidates = navigableSlideIndexes();
+      if (!candidates.length) return null;
+      return candidates.find(candidate => candidate >= index) ?? candidates[candidates.length - 1];
+    }
+
+    function renderNav() {
+      nav.innerHTML = '';
+      navigableSlideIndexes().forEach((slideIndex, visibleIndex) => {
+        const slide = slides[slideIndex];
+        const button = document.createElement('button');
+        button.textContent = String(visibleIndex + 1).padStart(2, '0');
+        button.title = slide.dataset.title || `Page ${slideIndex + 1}`;
+        button.setAttribute('aria-label', button.title);
+        button.dataset.slideIndex = String(slideIndex);
+        button.classList.toggle('is-hidden-page', isSlideHidden(slide));
+        button.onclick = () => goTo(slideIndex);
+        nav.appendChild(button);
+      });
+      buttons = [...nav.querySelectorAll('button')];
+    }
+
+    function renumberVisiblePageFooters() {
+      slides
+        .filter(slide => !isSlideHidden(slide))
+        .forEach((slide, index) => {
+          slide.querySelectorAll('.page-number').forEach(node => {
+            node.textContent = String(index + 1).padStart(2, '0');
+          });
+        });
+    }
+
+    function setPageVisibilityStatus(message, kind = '') {
+      const status = document.getElementById('pageVisibilityStatus');
+      if (!status) return;
+      status.textContent = message;
+      status.classList.toggle('is-error', kind === 'error');
+      status.classList.toggle('is-ok', kind === 'ok');
+    }
+
+    function refreshCurrentPageVisibilityControl() {
+      const input = document.getElementById('currentPageVisible');
+      const slide = slides[current];
+      if (!input) return;
+      input.checked = Boolean(slide) && !isSlideHidden(slide);
+      input.disabled = !editMode || !slide;
+      if (slide) {
+        setPageVisibilityStatus(`当前页：${slide.dataset.title || `第 ${current + 1} 页`}。隐藏后不会出现在导航或导出文件中，页码会自动重排。`);
+      }
+    }
+
+    function setCurrentPageVisibility(visible) {
+      if (!editMode || !slides[current]) return;
+      const slide = slides[current];
+      const input = document.getElementById('currentPageVisible');
+      if (!visible && slides.filter(candidate => !isSlideHidden(candidate)).length <= 1) {
+        if (input) input.checked = true;
+        setPageVisibilityStatus('至少保留一页展示。', 'error');
+        return;
+      }
+      if (visible) slide.removeAttribute('data-page-hidden');
+      else slide.dataset.pageHidden = 'true';
+      renumberVisiblePageFooters();
+      renderNav();
+      goTo(current);
+      refreshCurrentPageVisibilityControl();
+      window.syncDeckJsonFromDom?.();
+      document.dispatchEvent(new CustomEvent('html-report-page-visibility', { detail: { element: slide, visible } }));
+    }
+
+    function restoreHiddenPages() {
+      if (!editMode) return;
+      const hidden = slides.filter(isSlideHidden);
+      hidden.forEach(slide => slide.removeAttribute('data-page-hidden'));
+      renumberVisiblePageFooters();
+      renderNav();
+      goTo(current);
+      refreshCurrentPageVisibilityControl();
+      window.syncDeckJsonFromDom?.();
+      setPageVisibilityStatus(hidden.length ? `已恢复 ${hidden.length} 个隐藏页面。` : '当前没有隐藏页面。', hidden.length ? 'ok' : '');
+    }
 
     function updateStageScale() {
       if (mode !== 'ppt') {
@@ -788,10 +885,13 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     }
 
     function goTo(index) {
-      current = Math.max(0, Math.min(index, slides.length - 1));
+      const requested = Math.max(0, Math.min(index, slides.length - 1));
+      const next = closestNavigableSlideIndex(requested);
+      if (next === null) return;
+      current = next;
       slides.forEach((slide, i) => slide.classList.toggle('active-slide', i === current));
-      buttons.forEach((button, i) => {
-        const active = i === current;
+      buttons.forEach(button => {
+        const active = Number(button.dataset.slideIndex) === current;
         button.classList.toggle('active', active);
         button.setAttribute('aria-current', active ? 'page' : 'false');
       });
@@ -872,6 +972,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       editMode = enabled;
       if (editMode) window.HTMLReportEditor?.refreshGlobalControlsFromComputedTypography?.();
       document.body.classList.toggle('edit-mode', editMode);
+      renderNav();
       document.querySelectorAll('.editable').forEach(el => {
         if (editMode) el.setAttribute('contenteditable', 'true');
         else el.removeAttribute('contenteditable');
@@ -886,6 +987,8 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         clearSelectedColumn();
         window.syncDeckJsonFromDom?.();
       }
+      goTo(current);
+      refreshCurrentPageVisibilityControl();
       window.HTMLReportEditor?.refreshDataGroupAvailability?.();
     }
 
@@ -908,6 +1011,10 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     navStyleButtons.forEach(button => {
       button.onclick = () => setNavStyle(button.dataset.navStyle);
     });
+    document.getElementById('currentPageVisible')?.addEventListener('change', event => {
+      setCurrentPageVisibility(event.target.checked);
+    });
+    document.getElementById('restoreHiddenPages')?.addEventListener('click', restoreHiddenPages);
 
     function insertPlainText(text) {
       const selection = window.getSelection();
@@ -1005,6 +1112,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     };
 
     function cleanStandaloneClone(clone, preserveEditing = false) {
+      window.HTMLReportEditor?.removeHiddenPagesFromClone?.(clone);
       clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
       clone.querySelectorAll('.selected-box').forEach(el => el.classList.remove('selected-box'));
       clone.querySelectorAll('.selected-col').forEach(el => el.classList.remove('selected-col'));
@@ -1066,18 +1174,33 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       }));
     }
 
+    function triggerStandaloneHtmlDownload(html, filename) {
+      const blob = new Blob(['<!doctype html>\n' + html], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      const objectUrl = URL.createObjectURL(blob);
+      a.href = objectUrl;
+      a.download = filename || 'html-report.html';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      window.setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+      }, 1500);
+    }
+
     async function downloadStandaloneHtml() {
       const preserveEditing = arguments[0] === true;
-      syncDeckJsonFromDom();
+      // Standalone HTML serializes the live DOM directly. Avoid a full PPTX geometry
+      // synchronization here: on large decks it blocks the click long enough for browsers
+      // to reject the download as no longer user initiated.
       const clone = document.documentElement.cloneNode(true);
       cleanStandaloneClone(clone, preserveEditing);
-      await inlineExternalScriptsForStandalone(clone);
-      const blob = new Blob(['<!doctype html>\n' + clone.outerHTML], { type: 'text/html;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'html-ppt-single.html';
-      a.click();
-      URL.revokeObjectURL(a.href);
+      if (clone.querySelector('script[src]')) await inlineExternalScriptsForStandalone(clone);
+      triggerStandaloneHtmlDownload(
+        clone.outerHTML,
+        window.HTMLReportEditor?.getHtmlExportFileName?.() || 'html-report.html'
+      );
     }
 
     function getPptxDeckData() {
@@ -1228,8 +1351,9 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       deck.meta.fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim() || deck.meta.fontFamily;
       const original = current;
       deck.slides.forEach((slideData, slideIndex) => {
-        goTo(slideIndex);
         const slideEl = slides[slideIndex];
+        if (!slideEl || isSlideHidden(slideEl)) return;
+        goTo(slideIndex);
         const objectsByName = new Map();
         (slideData.objects || []).forEach(obj => {
           if (obj.name) objectsByName.set(obj.name, obj);
@@ -1264,6 +1388,9 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
             obj.chartType = 'echarts';
             obj.chartData = element.dataset.chartData || obj.chartData || '';
             obj.chartOption = element.dataset.chartOption || obj.chartOption || '';
+          }
+          if (obj.type === 'image') {
+            obj.src = element.getAttribute('src') || '';
           }
         });
         const presentNames = new Set(exportableElementsForSlide(slideEl, slideIndex, objectsByName).map(element => element.dataset.pptxName));
@@ -1343,6 +1470,8 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       window.addEventListener('resize', () => chart.resize());
     }
 
+    renumberVisiblePageFooters();
+    renderNav();
     goTo(0);
     setNavStyle('numbered');
     setEditMode(false);

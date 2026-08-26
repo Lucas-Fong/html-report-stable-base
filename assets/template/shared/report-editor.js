@@ -17,6 +17,7 @@
   let selectedElement = null;
   let recognitionPickMode = false;
   let recognitionCandidate = null;
+  let imageCropState = null;
   let documentClickBound = false;
   let sectionNavBound = false;
   let typographyResizeBound = false;
@@ -69,6 +70,112 @@
 
   function shortSectionTitle(title) {
     return Array.from(String(title || '').trim()).slice(0, 6).join('');
+  }
+
+  function reportCoverTitle() {
+    const scope = isSinglePageMode()
+      ? document.querySelector('.report-section:not([data-page-hidden="true"])') || document.querySelector('.report-section')
+      : document.querySelector('.slide:not([data-page-hidden="true"])') || document.querySelector('.slide');
+    const title = scope?.querySelector('h1, [data-ppt-level="h1"]')?.textContent?.replace(/\s+/g, ' ').trim();
+    return title || document.title || 'html-report';
+  }
+
+  function htmlExportFileName() {
+    const normalized = reportCoverTitle()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .replace(/^\.+|\.+$/g, '')
+      .trim();
+    const base = Array.from(normalized || 'html-report').slice(0, 72).join('');
+    return `${base || 'html-report'}.html`;
+  }
+
+  function visibleReportSections() {
+    return [...document.querySelectorAll('.report-section[data-title]')]
+      .filter(section => section.dataset.pageHidden !== 'true');
+  }
+
+  function currentVisibleReportSection() {
+    const sections = visibleReportSections();
+    if (!sections.length) return null;
+    const anchor = Math.min(280, Math.max(120, window.innerHeight * 0.3));
+    const intersecting = sections.find(section => {
+      const rect = section.getBoundingClientRect();
+      return rect.top <= anchor && rect.bottom >= anchor;
+    });
+    if (intersecting) return intersecting;
+    return sections.reduce((nearest, section) => {
+      const distance = Math.abs(section.getBoundingClientRect().top - anchor);
+      const nearestDistance = Math.abs(nearest.getBoundingClientRect().top - anchor);
+      return distance < nearestDistance ? section : nearest;
+    }, sections[0]);
+  }
+
+  function setPageVisibilityStatus(message, kind = '') {
+    const status = document.getElementById('pageVisibilityStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('is-error', kind === 'error');
+    status.classList.toggle('is-ok', kind === 'ok');
+  }
+
+  function refreshSinglePageVisibilityControl() {
+    if (!isSinglePageMode()) return;
+    const input = document.getElementById('currentPageVisible');
+    if (!input) return;
+    const section = currentVisibleReportSection();
+    input.checked = Boolean(section);
+    input.disabled = !editModeEnabled() || !section;
+    if (section) setPageVisibilityStatus(`当前章节：${section.dataset.title || section.id || '未命名'}。隐藏后不会出现在导航或导出文件中。`);
+  }
+
+  function setCurrentSinglePageVisibility(visible) {
+    if (!isSinglePageMode() || !editModeEnabled()) return;
+    const section = currentVisibleReportSection();
+    const input = document.getElementById('currentPageVisible');
+    if (!section) return;
+    if (!visible && visibleReportSections().length <= 1) {
+      if (input) input.checked = true;
+      setPageVisibilityStatus('至少保留一个可见章节。', 'error');
+      return;
+    }
+    if (visible) section.removeAttribute('data-page-hidden');
+    else section.dataset.pageHidden = 'true';
+    buildSectionNav();
+    refreshSectionNavActiveState();
+    refreshSinglePageVisibilityControl();
+    document.dispatchEvent(new CustomEvent('html-report-page-visibility', { detail: { element: section, visible } }));
+  }
+
+  function restoreHiddenSinglePageSections() {
+    if (!isSinglePageMode() || !editModeEnabled()) return;
+    const hidden = [...document.querySelectorAll('.report-section[data-page-hidden="true"]')];
+    hidden.forEach(section => section.removeAttribute('data-page-hidden'));
+    buildSectionNav();
+    refreshSectionNavActiveState();
+    refreshSinglePageVisibilityControl();
+    setPageVisibilityStatus(hidden.length ? `已恢复 ${hidden.length} 个隐藏章节。` : '当前没有隐藏章节。', hidden.length ? 'ok' : '');
+  }
+
+  function removeHiddenPagesFromClone(clone) {
+    clone.querySelectorAll('.report-section[data-page-hidden="true"]').forEach(section => section.remove());
+    const slides = [...clone.querySelectorAll('.slide')];
+    if (!slides.length) return;
+    const hiddenIndexes = slides
+      .map((slide, index) => slide.dataset.pageHidden === 'true' ? index : -1)
+      .filter(index => index >= 0);
+    if (!hiddenIndexes.length) return;
+    const deckData = clone.querySelector('#html-pptx-' + 'data');
+    if (deckData) {
+      try {
+        const deck = JSON.parse(deckData.textContent);
+        deck.slides = (deck.slides || []).filter((_slide, index) => !hiddenIndexes.includes(index));
+        deckData.textContent = `\n${JSON.stringify(deck, null, 2)}\n  `;
+      } catch (_error) {
+        // Keep the source data when an unrelated malformed payload cannot be parsed.
+      }
+    }
+    slides.filter(slide => slide.dataset.pageHidden === 'true').forEach(slide => slide.remove());
   }
 
   function setAccordionGroupOpen(group, open) {
@@ -762,7 +869,7 @@
     const nav = document.getElementById('sectionNav');
     if (!nav) return;
     nav.textContent = '';
-    const sections = [...document.querySelectorAll('.report-section[data-title]')];
+    const sections = visibleReportSections();
     sections.forEach((section, index) => {
       if (!section.id) section.id = `section-${index + 1}`;
       const fullTitle = section.dataset.title || section.id;
@@ -793,15 +900,12 @@
 
   function refreshSectionNavActiveState() {
     if (!isSinglePageMode()) return;
-    const sections = [...document.querySelectorAll('.report-section[data-title]')];
-    if (!sections.length) return;
-    const current = sections.reduce((active, section) => {
-      const offset = section.getBoundingClientRect().top;
-      return offset <= 120 ? section : active;
-    }, sections[0]);
+    const current = currentVisibleReportSection();
+    if (!current) return;
     document.querySelectorAll('#sectionNav a').forEach(link => {
       link.classList.toggle('active', link.getAttribute('href') === `#${current.id}`);
     });
+    refreshSinglePageVisibilityControl();
   }
 
   function bindSectionNavControls() {
@@ -809,6 +913,10 @@
     document.querySelectorAll('[data-section-nav-style]').forEach(button => {
       button.addEventListener('click', () => setSectionNavStyle(button.dataset.sectionNavStyle));
     });
+    document.getElementById('currentPageVisible')?.addEventListener('change', event => {
+      setCurrentSinglePageVisibility(event.target.checked);
+    });
+    document.getElementById('restoreHiddenPages')?.addEventListener('click', restoreHiddenSinglePageSections);
     window.addEventListener('scroll', refreshSectionNavActiveState, { passive: true });
     window.addEventListener('resize', () => {
       refreshSectionNavActiveState();
@@ -865,7 +973,7 @@
         selectElement(target);
         return;
       }
-      if (!event.target.closest('.style-drawer')) selectElement(null);
+      if (!event.target.closest('.style-drawer, #imageCropDialog')) selectElement(null);
     });
     documentClickBound = true;
   }
@@ -920,6 +1028,14 @@
     button.dataset.deleteControlInitialized = 'true';
   }
 
+  function setImageReplacementStatus(message, kind = '') {
+    const status = document.getElementById('imageReplacementStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('is-error', kind === 'error');
+    status.classList.toggle('is-ok', kind === 'ok');
+  }
+
   function fileToDataUrl(blob) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -927,6 +1043,238 @@
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  }
+
+  function selectedImageForReplacement() {
+    if (!editModeEnabled() || !selectedElement || elementType(selectedElement) !== 'image' || !selectedElement.matches('img')) {
+      setImageReplacementStatus('请先在编辑模式下选中一张图片。', 'error');
+      return null;
+    }
+    return selectedElement;
+  }
+
+  function validImageFile(file) {
+    if (file && /^image\//i.test(file.type)) return true;
+    setImageReplacementStatus('请选择有效的图片文件。', 'error');
+    return false;
+  }
+
+  function applyImageDataUrl(image, dataUrl, file, cropped = false) {
+    if (!image || !document.contains(image)) return false;
+    const scale = reportScale();
+    const rect = image.getBoundingClientRect();
+    const pixelValue = value => `${Math.round((value / scale) * 1000) / 1000}px`;
+    image.style.setProperty('width', pixelValue(rect.width), 'important');
+    image.style.setProperty('height', pixelValue(rect.height), 'important');
+    image.setAttribute('src', dataUrl);
+    image.removeAttribute('srcset');
+    image.removeAttribute('sizes');
+    window.syncDeckJsonFromDom?.();
+    refreshElementControls();
+    document.dispatchEvent(new CustomEvent('html-report-image-replaced', { detail: { element: image, file, cropped } }));
+    setImageReplacementStatus(`${cropped ? '已裁剪并替换为' : '已替换为'} ${file?.name || '本地图片'}，导出将保留新图片。`, 'ok');
+    return true;
+  }
+
+  function loadImageFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = dataUrl;
+    });
+  }
+
+  function ensureImageCropDialog() {
+    let dialog = document.getElementById('imageCropDialog');
+    if (dialog) return dialog;
+    dialog = document.createElement('div');
+    dialog.id = 'imageCropDialog';
+    dialog.className = 'image-crop-dialog';
+    dialog.hidden = true;
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'imageCropTitle');
+    dialog.innerHTML = `
+      <section class="image-crop-panel">
+        <header class="image-crop-header">
+          <div><h3 id="imageCropTitle">裁剪图片</h3><p>拖动图片调整位置，再用缩放控制画面范围。</p></div>
+          <button type="button" class="image-crop-close" data-image-crop-cancel aria-label="取消裁剪">×</button>
+        </header>
+        <div class="image-crop-preview-wrap"><canvas id="imageCropPreview" aria-label="图片裁剪预览"></canvas></div>
+        <label class="image-crop-zoom" for="imageCropZoom"><span>缩放</span><input id="imageCropZoom" type="range" min="100" max="600" value="100" step="1"><output id="imageCropZoomValue">100%</output></label>
+        <footer class="image-crop-actions"><button type="button" class="image-crop-cancel" data-image-crop-cancel>取消</button><button type="button" class="image-crop-apply" id="applyImageCrop">应用裁剪</button></footer>
+      </section>`;
+    document.body.appendChild(dialog);
+
+    const preview = dialog.querySelector('#imageCropPreview');
+    const zoom = dialog.querySelector('#imageCropZoom');
+    const cancel = () => closeImageCropDialog();
+    dialog.querySelectorAll('[data-image-crop-cancel]').forEach(button => button.addEventListener('click', cancel));
+    dialog.addEventListener('click', event => { if (event.target === dialog) cancel(); });
+    zoom.addEventListener('input', () => {
+      if (!imageCropState) return;
+      imageCropState.scale = imageCropState.minScale * (Number(zoom.value) / 100);
+      clampImageCropOffset(imageCropState);
+      drawImageCropPreview();
+    });
+    preview.addEventListener('pointerdown', event => {
+      if (!imageCropState) return;
+      imageCropState.drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, offsetX: imageCropState.offsetX, offsetY: imageCropState.offsetY };
+      preview.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+    preview.addEventListener('pointermove', event => {
+      const state = imageCropState;
+      if (!state?.drag || state.drag.pointerId !== event.pointerId) return;
+      state.offsetX = state.drag.offsetX + event.clientX - state.drag.x;
+      state.offsetY = state.drag.offsetY + event.clientY - state.drag.y;
+      clampImageCropOffset(state);
+      drawImageCropPreview();
+    });
+    const stopDragging = event => {
+      if (imageCropState?.drag?.pointerId === event.pointerId) imageCropState.drag = null;
+    };
+    preview.addEventListener('pointerup', stopDragging);
+    preview.addEventListener('pointercancel', stopDragging);
+    dialog.querySelector('#applyImageCrop').addEventListener('click', applyImageCrop);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !dialog.hidden) closeImageCropDialog();
+    });
+    return dialog;
+  }
+
+  function cropPreviewSize(aspect) {
+    const maxWidth = Math.min(620, Math.max(260, window.innerWidth - 72));
+    const maxHeight = Math.min(420, Math.max(190, window.innerHeight - 290));
+    if (maxWidth / maxHeight > aspect) return { width: Math.round(maxHeight * aspect), height: Math.round(maxHeight) };
+    return { width: Math.round(maxWidth), height: Math.round(maxWidth / aspect) };
+  }
+
+  function clampImageCropOffset(state) {
+    const scaledWidth = state.source.naturalWidth * state.scale;
+    const scaledHeight = state.source.naturalHeight * state.scale;
+    const limitX = Math.max(0, (scaledWidth - state.stageWidth) / 2);
+    const limitY = Math.max(0, (scaledHeight - state.stageHeight) / 2);
+    state.offsetX = Math.min(limitX, Math.max(-limitX, state.offsetX));
+    state.offsetY = Math.min(limitY, Math.max(-limitY, state.offsetY));
+  }
+
+  function drawImageCropPreview() {
+    const state = imageCropState;
+    const dialog = document.getElementById('imageCropDialog');
+    const canvas = dialog?.querySelector('#imageCropPreview');
+    const zoom = dialog?.querySelector('#imageCropZoom');
+    const zoomValue = dialog?.querySelector('#imageCropZoomValue');
+    if (!state || !canvas) return;
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.round(state.stageWidth * dpr);
+    canvas.height = Math.round(state.stageHeight * dpr);
+    canvas.style.width = `${state.stageWidth}px`;
+    canvas.style.height = `${state.stageHeight}px`;
+    const context = canvas.getContext('2d');
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, state.stageWidth, state.stageHeight);
+    const scaledWidth = state.source.naturalWidth * state.scale;
+    const scaledHeight = state.source.naturalHeight * state.scale;
+    context.drawImage(state.source, (state.stageWidth - scaledWidth) / 2 + state.offsetX, (state.stageHeight - scaledHeight) / 2 + state.offsetY, scaledWidth, scaledHeight);
+    if (zoom) zoom.value = String(Math.round((state.scale / state.minScale) * 100));
+    if (zoomValue) zoomValue.value = `${zoom?.value || 100}%`;
+  }
+
+  function closeImageCropDialog() {
+    const dialog = document.getElementById('imageCropDialog');
+    dialog?.setAttribute('hidden', '');
+    dialog?.removeAttribute('data-crop-aspect');
+    dialog?.removeAttribute('data-original-src');
+    document.body.classList.remove('image-crop-open');
+    imageCropState = null;
+  }
+
+  function croppedImageDataUrl(state) {
+    const outputWidth = Math.round(Math.min(2400, Math.max(720, state.stageWidth * 2)));
+    const outputHeight = Math.max(1, Math.round(outputWidth / state.aspect));
+    const canvas = document.createElement('canvas');
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const factor = outputWidth / state.stageWidth;
+    const scaledWidth = state.source.naturalWidth * state.scale;
+    const scaledHeight = state.source.naturalHeight * state.scale;
+    canvas.getContext('2d').drawImage(
+      state.source,
+      ((state.stageWidth - scaledWidth) / 2 + state.offsetX) * factor,
+      ((state.stageHeight - scaledHeight) / 2 + state.offsetY) * factor,
+      scaledWidth * factor,
+      scaledHeight * factor,
+    );
+    return canvas.toDataURL('image/png');
+  }
+
+  function applyImageCrop() {
+    const state = imageCropState;
+    if (!state) return;
+    try {
+      const dataUrl = croppedImageDataUrl(state);
+      applyImageDataUrl(state.target, dataUrl, state.file, true);
+      closeImageCropDialog();
+    } catch (_error) {
+      setImageReplacementStatus('图片裁剪失败，请重新选择图片。', 'error');
+    }
+  }
+
+  async function openImageCropper(file) {
+    const target = selectedImageForReplacement();
+    if (!target || !validImageFile(file)) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const source = await loadImageFromDataUrl(dataUrl);
+      if (!document.contains(target)) return;
+      const rect = target.getBoundingClientRect();
+      const fallbackAspect = target.naturalWidth && target.naturalHeight ? target.naturalWidth / target.naturalHeight : 1;
+      const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : fallbackAspect;
+      const { width: stageWidth, height: stageHeight } = cropPreviewSize(Math.max(.1, aspect));
+      const minScale = Math.max(stageWidth / source.naturalWidth, stageHeight / source.naturalHeight);
+      imageCropState = { target, file, source, aspect, stageWidth, stageHeight, minScale, scale: minScale, offsetX: 0, offsetY: 0, drag: null };
+      const dialog = ensureImageCropDialog();
+      dialog.dataset.cropAspect = String(aspect);
+      dialog.dataset.originalSrc = target.getAttribute('src') || '';
+      dialog.hidden = false;
+      document.body.classList.add('image-crop-open');
+      drawImageCropPreview();
+      setImageReplacementStatus('请在裁剪面板中调整图片后应用。');
+    } catch (_error) {
+      setImageReplacementStatus('图片读取失败，请选择其他图片重试。', 'error');
+    }
+  }
+
+  async function replaceSelectedImage(file) {
+    const image = selectedImageForReplacement();
+    if (!image || !validImageFile(file)) return;
+    try {
+      applyImageDataUrl(image, await fileToDataUrl(file), file);
+    } catch (_error) {
+      setImageReplacementStatus('图片读取失败，请选择其他图片重试。', 'error');
+    }
+  }
+
+  function bindImageReplacementControl() {
+    const trigger = document.getElementById('replaceImageTrigger');
+    const input = document.getElementById('replaceImageInput');
+    if (trigger && input && trigger.dataset.imageReplacementInitialized !== 'true') {
+      trigger.addEventListener('click', event => {
+        event.preventDefault();
+        if (!selectedImageForReplacement()) return;
+        input.click();
+      });
+      trigger.dataset.imageReplacementInitialized = 'true';
+    }
+    if (!input || input.dataset.imageReplacementInitialized === 'true') return;
+    input.addEventListener('change', async () => {
+      const [file] = input.files || [];
+      input.value = '';
+      await openImageCropper(file);
+    });
+    input.dataset.imageReplacementInitialized = 'true';
   }
 
   async function inlineStandaloneAssets(clone) {
@@ -965,9 +1313,26 @@
     }
   }
 
+  function triggerStandaloneHtmlDownload(html, filename) {
+    const blob = new Blob(['<!doctype html>\n' + html], { type: 'text/html;charset=utf-8' });
+    const anchor = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    window.setTimeout(() => {
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    }, 1500);
+  }
+
   async function downloadStandaloneHtml(preserveEditing = false) {
     selectElement(null);
     const clone = document.documentElement.cloneNode(true);
+    removeHiddenPagesFromClone(clone);
+    clone.querySelector('#imageCropDialog')?.remove();
     clone.querySelectorAll('[contenteditable]').forEach(element => element.removeAttribute('contenteditable'));
     clone.querySelectorAll('.selected-element, .selected-box, .selected-col').forEach(element => {
       element.classList.remove('selected-element', 'selected-box', 'selected-col');
@@ -992,19 +1357,18 @@
       toggle?.removeAttribute('hidden');
       if (toggle) toggle.style.display = '';
     }
-    await inlineStandaloneAssets(clone);
-    const blob = new Blob(['<!doctype html>\n' + clone.outerHTML], { type: 'text/html;charset=utf-8' });
-    const anchor = document.createElement('a');
-    anchor.href = URL.createObjectURL(blob);
-    anchor.download = 'html-report-single.html';
-    anchor.click();
-    URL.revokeObjectURL(anchor.href);
+    // Do not introduce an async hop when assets are already inlined: browsers otherwise
+    // may no longer treat the save action as initiated by the user's click.
+    if (clone.querySelector('img[src]:not([src^="data:"])')) await inlineStandaloneAssets(clone);
+    triggerStandaloneHtmlDownload(clone.outerHTML, htmlExportFileName());
   }
 
-  function exportSnapshotHtml() {
+  function exportSnapshotHtml(syncPptxData = false) {
     selectElement(null);
-    window.syncDeckJsonFromDom?.();
+    if (syncPptxData) window.syncDeckJsonFromDom?.();
     const clone = document.documentElement.cloneNode(true);
+    removeHiddenPagesFromClone(clone);
+    clone.querySelector('#imageCropDialog')?.remove();
     clone.querySelectorAll('[contenteditable]').forEach(element => element.removeAttribute('contenteditable'));
     clone.querySelectorAll('.selected-element, .selected-box, .selected-col').forEach(element => {
       element.classList.remove('selected-element', 'selected-box', 'selected-col');
@@ -1030,27 +1394,44 @@
       return false;
     }
     const buttons = [...document.querySelectorAll(`[data-export-format="${format}"], #printPdf, #exportPpt, #downloadLongPng, #downloadLongPdf`)];
+    const activeButtons = buttons.filter(button => (
+      button.matches(`[data-export-format="${format}"]`) ||
+      (format === 'pdf' && button.matches('#printPdf, #downloadLongPdf')) ||
+      (format === 'pptx' && button.matches('#exportPpt')) ||
+      (format === 'png' && button.matches('#downloadLongPng'))
+    ));
+    const originalLabels = new Map(activeButtons.map(button => [button, button.textContent]));
     buttons.forEach(button => { button.disabled = true; });
+    activeButtons.forEach(button => { button.textContent = format === 'png' ? '生成图片中…' : '导出中…'; });
     try {
       const response = await fetch('/api/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: document.body.dataset.reportMode, format, html: exportSnapshotHtml(), title: document.title || 'html-report' }),
+        body: JSON.stringify({ mode: document.body.dataset.reportMode, format, html: exportSnapshotHtml(format === 'pdf' || format === 'pptx'), title: document.title || 'html-report' }),
       });
       const result = await response.json();
-      if (!response.ok || !result.downloadUrl) throw new Error(result.error || '导出失败。');
-      const anchor = document.createElement('a');
-      anchor.href = result.downloadUrl;
-      anchor.download = result.fileName || '';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
+      const downloadUrls = Array.isArray(result.downloadUrls) && result.downloadUrls.length
+        ? result.downloadUrls
+        : (result.downloadUrl ? [result.downloadUrl] : []);
+      if (!response.ok || !downloadUrls.length) throw new Error(result.error || '导出失败。');
+      downloadUrls.forEach((downloadUrl, index) => {
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = result.fileNames?.[index] || result.fileName || '';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      });
+      if (format === 'png' && downloadUrls.length > 1) {
+        window.alert(`已生成 ${downloadUrls.length} 张 PNG 图片（一页一张）。若浏览器拦截连续下载，可在报告目录的 exports 文件夹中直接获取全部图片。`);
+      }
       return true;
     } catch (error) {
       window.alert(error instanceof Error ? error.message : '导出失败。');
       return false;
     } finally {
       buttons.forEach(button => { button.disabled = false; });
+      originalLabels.forEach((label, button) => { button.textContent = label; });
     }
   }
 
@@ -1070,6 +1451,7 @@
     bindGlobalControls();
     bindElementControls();
     bindDeleteControl();
+    bindImageReplacementControl();
     refreshElementControls();
     refreshDataGroupAvailability();
     window.setTimeout(applyStoredChartOptions, 0);
@@ -1080,6 +1462,7 @@
       const activeNav = document.body.classList.contains('section-nav-left') ? 'left' : document.body.classList.contains('section-nav-hidden') ? 'hidden' : 'right';
       setSectionNavStyle(activeNav);
       refreshSectionNavActiveState();
+      refreshSinglePageVisibilityControl();
       if (!typographyResizeBound) {
         document.addEventListener('input', event => {
           if (event.target.closest('main')) refreshTypographyLabels();
@@ -1103,6 +1486,10 @@
     applyRecognitionType,
     buildSectionNav,
     setSectionNavStyle,
+    setCurrentSinglePageVisibility,
+    restoreHiddenSinglePageSections,
+    removeHiddenPagesFromClone,
+    getHtmlExportFileName: htmlExportFileName,
     shortSectionTitle,
     typographyLevel,
     refreshTypographyLabels,
@@ -1116,6 +1503,7 @@
     refreshChartDataControls,
     applyChartDataEditor,
     applyStoredChartOptions,
+    replaceSelectedImage,
     typographyLabelPosition,
   };
 

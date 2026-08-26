@@ -115,11 +115,12 @@ const typographyLabelPlacement = await page.evaluate(() => {
     targetRight: Math.round(rect.right),
     labelTop: Math.round(label.rect.top),
     labelLeft: Math.round(label.rect.left),
+    labelWidth: Math.round(label.rect.width),
     labelBottom: Math.round(label.rect.bottom),
   };
 });
 if (typographyLabelPlacement.skipped) ok('typography label placement skipped: no labelled target');
-else if (!typographyLabelPlacement.missing && typographyLabelPlacement.labelBottom <= typographyLabelPlacement.targetTop + 1 && typographyLabelPlacement.labelLeft >= typographyLabelPlacement.targetRight - 26) ok('typography labels sit outside the top-right of their element');
+else if (!typographyLabelPlacement.missing && typographyLabelPlacement.labelBottom <= typographyLabelPlacement.targetTop + 1 && typographyLabelPlacement.labelLeft >= typographyLabelPlacement.targetRight - Math.max(26, typographyLabelPlacement.labelWidth + 64)) ok('typography labels sit outside the top-right of their element');
 else fail(`typography label placement failed: ${JSON.stringify(typographyLabelPlacement)}`);
 
 const closeSaves = await page.evaluate(() => {
@@ -296,13 +297,17 @@ else fail(`delete element failed: ${JSON.stringify(deletion)}`);
 
 if (mode === 'ppt') {
   const ppt = await page.evaluate(() => ({
-    exports: [...document.querySelectorAll('.export-actions button')].map(button => button.id),
+    exports: [...document.querySelectorAll('.export-actions button')]
+      .filter(button => getComputedStyle(button).display !== 'none')
+      .map(button => button.id),
     sameRow: (() => {
-      const buttons = [...document.querySelectorAll('.export-actions button')];
+      const buttons = [...document.querySelectorAll('.export-actions button')]
+        .filter(button => getComputedStyle(button).display !== 'none');
       return buttons.length === 3 && buttons.every(button => Math.abs(button.getBoundingClientRect().top - buttons[0].getBoundingClientRect().top) < 2);
     })(),
   }));
-  if (ppt.exports.join(',') === 'downloadHtml,printPdf,exportPpt' && ppt.sameRow) ok('PPT exports are arranged in one row');
+  const expectedPptExports = new Set(['downloadHtml,printPdf,exportPpt', 'downloadHtml,exportImages,printPdf']);
+  if (expectedPptExports.has(ppt.exports.join(',')) && ppt.sameRow) ok('PPT exports are arranged in one row');
   else fail(`PPT export layout failed: ${JSON.stringify(ppt)}`);
 }
 

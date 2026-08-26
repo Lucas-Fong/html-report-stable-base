@@ -12,6 +12,7 @@
 - Each task group includes a `.drawer-group-help` sentence explaining when to use that group.
 - Each drawer module toggle receives a compact icon. Use the shared mapping instead of adding one-off SVGs.
 - Controls that mutate report content use `.edit-only` and stay disabled outside edit mode.
+- `浏览与模式` includes the edit-only `#currentPageVisible` checkbox and `#restoreHiddenPages` command. The checkbox affects the page currently in view; do not permit the author to hide the final visible section/slide.
 - `#editToggle` reads `编辑模式` before editing and `保存修改` during editing. Exiting edit mode persists PPT DOM changes to `html-pptx-data`.
 - `#closeDrawer` must save active edits before closing: if edit mode is on, run the same exit path as `保存修改`, then close the drawer.
 - Both modes include a `补充识别` drawer module with `#pickRecognitionElement` and `[data-recognition-type]` controls for marking missed page content as text, shape, chart, image, or table.
@@ -54,6 +55,7 @@ It must also accept advanced `{ "option": {...} }` payloads. Applying valid JSON
 Context-aware drawer behavior:
 
 - Selecting text, shape, or image opens `对象编辑`.
+- Selecting an image also exposes a `图片来源` subgroup with a `替换图片` command. It accepts a user-selected local image, then opens `#imageCropDialog` before changing the page. The crop frame uses the selected image's rendered width/height ratio; users can drag the source and adjust zoom. `应用裁剪` replaces only the selected real `<img>` with a cropped PNG data URL, keeps its inline dimensions and object-fit/object-position behavior, and clears `srcset` / `sizes`. `取消` leaves the original image unchanged. In PPT mode, synchronize the updated `src` into `html-pptx-data` immediately.
 - Selecting a chart opens `图表数据`.
 - Selecting a table cell in PPT mode opens `表格设置`.
 - `表格设置` is unavailable until a table column/cell is selected; `图表数据` is unavailable until an ECharts chart is selected. Both stay unavailable while ordinary text, shape, or image content is selected.
@@ -85,9 +87,9 @@ PPT fixed furniture such as headers, footers, and page numbers must not use `.ed
 
 ## Mode Differences
 
-`single-page` uses `<main class="report" id="report">` and `.report-section[data-title]`. It has a section navigation component `#sectionNav` with drawer controls in `#sectionNavStyleControl`. The allowed styles are exactly `hidden`, `left`, and `right`, with `right` as the default. Each nav item uses the section title truncated to at most six Unicode characters and keeps the full title in the link `title` attribute. It has no PPT slide navigation, mode toggle, PDF/PPTX controls, or PPTX JSON.
+`single-page` uses `<main class="report" id="report">` and `.report-section[data-title]`. It has a section navigation component `#sectionNav` with drawer controls in `#sectionNavStyleControl`. The allowed styles are exactly `hidden`, `left`, and `right`, with `right` as the default. Each nav item uses the section title truncated to at most six Unicode characters and keeps the full title in the link `title` attribute. A hidden section has `data-page-hidden="true"`, is absent from `#sectionNav` and export snapshots, and can be restored through `#restoreHiddenPages`. It has no PPT slide navigation, mode toggle, PDF/PPTX controls, or PPTX JSON.
 
-`ppt` uses `<main class="deck" id="deck">`, `.slide`, `#nav`, and `#modeToggle`. It retains table column controls, stage scaling, typography badges, `html-pptx-data`, and PPTX export.
+`ppt` uses `<main class="deck" id="deck">`, `.slide`, `#nav`, and `#modeToggle`. It retains table column controls, stage scaling, typography badges, `html-pptx-data`, and PPTX export. A hidden slide has `data-page-hidden="true"`; it is omitted from normal `#nav`, HTML/PNG/PDF/PPTX snapshot data, and cloned `html-pptx-data`. Recalculate visible `.page-number` footer text as `01`, `02`, … after every visibility change. Authors may reach a hidden active slide only in edit mode to restore it.
 
 ## Standalone Export
 
@@ -99,7 +101,12 @@ Clone the current DOM after edits, then:
 - inline local stylesheets, scripts, images, and data;
 - preserve single-page section navigation items and the selected navigation style;
 - preserve inline global variables and independent element styles;
+- preserve user-replaced image data URLs without requiring any additional asset fetch;
+- omit an open `#imageCropDialog` from the serialized delivery HTML;
+- remove every `data-page-hidden="true"` section/slide before serialization; when slides are removed, remove matching entries from `html-pptx-data` as well;
 - write a real newline after `<!doctype html>` and nothing after `</html>`.
+
+Browser-downloaded HTML filenames use the first visible report/cover H1. Replace `\\ / : * ? " < > |` with `-`, normalize whitespace, cap the filename stem at 72 Unicode characters, and fall back to `document.title` then `html-report`.
 
 ## Click-Triggered Export
 
