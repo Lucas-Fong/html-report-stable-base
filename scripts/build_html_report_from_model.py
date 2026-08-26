@@ -104,8 +104,14 @@ def build_single_page_main(model: dict) -> str:
 
 
 def build_pptx_data(model: dict) -> dict:
+    meta = dict(model.get("meta") or {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"})
+    meta.setdefault("width", 1440)
+    meta.setdefault("height", 810)
+    meta["fontFamily"] = "Microsoft YaHei"
+    if model.get("pptxContractVersion") == 2:
+        meta.setdefault("typographyStandard", "v1")
     deck = {
-        "meta": model.get("meta", {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"}),
+        "meta": meta,
         "slides": [
             {
                 "title": slide.get("title", "未命名"),

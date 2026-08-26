@@ -9,6 +9,7 @@ import json
 import mimetypes
 import re
 import tempfile
+from xml.etree import ElementTree
 from html import unescape
 from pathlib import Path
 
@@ -49,12 +50,23 @@ SHAPE_TYPES = {
     "line": MSO_SHAPE.RECTANGLE,
 }
 
-DEFAULT_FONT_FAMILY = "Microsoft YaHei"
+PPT_FONT_FAMILY = "Microsoft YaHei"
+DEFAULT_FONT_FAMILY = PPT_FONT_FAMILY
+PPT_THEME_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+PPT_TYPOGRAPHY_SCALE = {
+    "coverTitle": {"fontSizePt": 42, "lineHeightPt": 50},
+    "pageTitle": {"fontSizePt": 28, "lineHeightPt": 34},
+    "sectionTitle": {"fontSizePt": 20, "lineHeightPt": 24},
+    "metric": {"fontSizePt": 28, "lineHeightPt": 34},
+    "body": {"fontSizePt": 14, "lineHeightPt": 20},
+    "note": {"fontSizePt": 11, "lineHeightPt": 14},
+    "footer": {"fontSizePt": 12, "lineHeightPt": 14},
+}
 PPT_LEVEL_FONT_SIZES = {
-    "h1": 60,
+    "h1": 42,
     "h2": 28,
     "h3": 20,
-    "metric": 30,
+    "metric": 28,
     "body": 14,
 }
 PPT_ROLE_FONT_SIZES = {
@@ -321,13 +333,8 @@ def set_line(shape, line: str | dict | None) -> None:
 
 
 def concrete_font_family(font_family: str | None, fallback: str = DEFAULT_FONT_FAMILY) -> str:
-    if not font_family:
-        return fallback
-    for part in font_family.split(","):
-        name = part.strip().strip("\"'")
-        if name and name.lower() not in {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"}:
-            return name
-    return fallback
+    """Keep every editable PPTX text run on the agreed output font."""
+    return PPT_FONT_FAMILY
 
 
 def set_run_font(run, font_family: str | None, font_size_px: float, bold: bool, color: str | None) -> None:
@@ -407,6 +414,67 @@ def v2_text_style(obj: dict) -> dict | None:
     return style if isinstance(style, dict) else None
 
 
+def typography_token(obj: dict, style: dict | None, meta: dict) -> str | None:
+    role = obj.get("pptRole")
+    if role in PPT_ROLE_FONT_SIZES:
+        return "footer"
+    if style and style.get("typography") in PPT_TYPOGRAPHY_SCALE:
+        return str(style["typography"])
+    if not style or meta.get("typographyStandard") != "v1":
+        return None
+    level = obj.get("pptLevel")
+    level_tokens = {
+        "h1": "coverTitle",
+        "h2": "pageTitle",
+        "h3": "sectionTitle",
+        "metric": "metric",
+        "body": "body",
+        "note": "note",
+    }
+    if level in level_tokens:
+        return level_tokens[level]
+    raw_size = float(style.get("fontSizePt", 14))
+    if raw_size >= 36:
+        return "coverTitle"
+    if raw_size >= 24:
+        return "pageTitle"
+    if raw_size >= 16:
+        return "sectionTitle"
+    if raw_size >= 12:
+        return "body"
+    return "note"
+
+
+def v2_text_metrics(obj: dict, style: dict, meta: dict) -> tuple[float, float]:
+    token = typography_token(obj, style, meta)
+    if token:
+        spec = PPT_TYPOGRAPHY_SCALE[token]
+        return float(spec["fontSizePt"]), float(spec["lineHeightPt"])
+    size = float(style.get("fontSizePt", 14))
+    return size, float(style.get("lineHeightPt", size * 1.2))
+
+
+def table_font_size(style: dict, meta: dict, fallback: float = 14) -> float:
+    if style.get("typography") in PPT_TYPOGRAPHY_SCALE:
+        return float(PPT_TYPOGRAPHY_SCALE[style["typography"]]["fontSizePt"])
+    if meta.get("typographyStandard") == "v1":
+        return float(PPT_TYPOGRAPHY_SCALE["body"]["fontSizePt"])
+    return float(style.get("fontSizePt", fallback))
+
+
+def force_ppt_theme_font(prs: Presentation) -> None:
+    """Set major/minor theme fonts so charts and inherited text use Microsoft YaHei."""
+    for part in prs.part.package.iter_parts():
+        if not str(part.partname).startswith("/ppt/theme/"):
+            continue
+        root = ElementTree.fromstring(part.blob)
+        for font_scheme in root.findall(f".//{{{PPT_THEME_NS}}}fontScheme"):
+            for font_node in font_scheme.iter():
+                if "typeface" in font_node.attrib:
+                    font_node.set("typeface", PPT_FONT_FAMILY)
+        part._blob = ElementTree.tostring(root, encoding="UTF-8", xml_declaration=True)
+
+
 def padding_pt(style: dict, side: str) -> float:
     padding = style.get("paddingPt", 0)
     if isinstance(padding, dict):
@@ -437,14 +505,15 @@ def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     elif align == "left":
         paragraph.alignment = PP_ALIGN.LEFT
     if style:
-        paragraph.line_spacing = Pt(float(style.get("lineHeightPt", style.get("fontSizePt", 14) * 1.2)))
+        font_size_pt, line_height_pt = v2_text_metrics(obj, style, meta)
+        paragraph.line_spacing = Pt(line_height_pt)
         paragraph.space_before = Pt(0)
         paragraph.space_after = Pt(0)
     run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
     set_run_font(
         run,
         style.get("fontFamily") if style else obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
-        float(style.get("fontSizePt", 14)) if style else ppt_font_size(obj, 14),
+        font_size_pt if style else ppt_font_size(obj, 14),
         bool(style.get("bold", obj.get("bold", False))) if style else bool(obj.get("bold", False)),
         style.get("color", obj.get("color")) if style else obj.get("color"),
     )
@@ -503,7 +572,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
                 set_run_font(
                     run,
                     header_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
-                    float(header_style.get("fontSizePt", 14)),
+                    table_font_size(header_style, meta),
                     bool(header_style.get("bold", True)),
                     header_style.get("color", "#ffffff"),
                 )
@@ -522,7 +591,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
                     set_run_font(
                         run,
                         body_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
-                        float(body_style.get("fontSizePt", 14)),
+                        table_font_size(body_style, meta),
                         bool(body_style.get("bold", c == 0)),
                         body_style.get("color", "#334155"),
                     )
@@ -678,6 +747,7 @@ def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:
                 add_image(slide, obj, meta, prs, root)
             else:
                 raise RuntimeError(f"Unsupported PPTX object type: {kind}")
+    force_ppt_theme_font(prs)
     prs.save(out_path)
 
 

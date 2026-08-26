@@ -310,6 +310,43 @@ def test_v2_image_backed_chart_resolves_relative_asset() -> None:
             assert_true("图片未嵌入" not in slide_xml, "relative image-backed chart must not use the missing-image placeholder")
 
 
+def test_pptx_enforces_microsoft_yahei_and_typography_scale() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        html.write_text(
+            """
+<!doctype html><html><body data-report-mode="ppt">
+<script id="html-pptx-data" type="application/json">
+{
+  "pptxContractVersion": 2,
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Arial"},
+  "slides": [{"title": "字体规范", "objects": [
+    {"type": "text", "name": "cover", "frame": {"x": 70, "y": 70, "w": 900, "h": 90}, "text": "封面标题", "textStyle": {"fontFamily": "Arial", "fontSizePt": 31, "typography": "coverTitle", "color": "#102A43"}},
+    {"type": "text", "name": "page-title", "frame": {"x": 70, "y": 190, "w": 900, "h": 60}, "text": "页面标题", "textStyle": {"fontFamily": "Arial", "fontSizePt": 17, "typography": "pageTitle", "color": "#102A43"}},
+    {"type": "text", "name": "body", "frame": {"x": 70, "y": 270, "w": 900, "h": 40}, "text": "正文", "textStyle": {"fontFamily": "Arial", "fontSizePt": 19, "typography": "body", "color": "#486581"}},
+    {"type": "table", "name": "table", "frame": {"x": 70, "y": 340, "w": 600, "h": 160}, "columns": ["项目"], "rows": [["内容"]], "tableStyle": {"header": {"fontFamily": "Arial", "fontSizePt": 19, "typography": "body", "fill": "#0373B0", "color": "#FFFFFF"}, "body": {"fontFamily": "Arial", "fontSizePt": 19, "typography": "body", "color": "#243B53"}}},
+    {"type": "chart", "name": "chart", "frame": {"x": 760, "y": 340, "w": 420, "h": 240}, "chartType": "bar", "categories": ["A"], "series": [{"name": "值", "values": [1]}]}
+  ]}]
+}
+</script>
+</body></html>
+""",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            theme_xml = archive.read("ppt/theme/theme1.xml").decode("utf-8")
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true("Microsoft YaHei" in theme_xml, "PPTX theme must use Microsoft YaHei for native chart and default text fonts")
+            assert_true("Arial" not in theme_xml and "Arial" not in slide_xml, "PPTX must not retain requested non-standard font families")
+            typefaces = re.findall(r'typeface="([^"]+)"', theme_xml + slide_xml)
+            assert_true(typefaces and all(typeface == "Microsoft YaHei" for typeface in typefaces), "theme and native text runs must use Microsoft YaHei exclusively")
+            assert_true('sz="4200"' in slide_xml, "cover-title typography token must export at 42pt")
+            assert_true('sz="2800"' in slide_xml, "page-title typography token must export at 28pt")
+            assert_true('sz="1400"' in slide_xml, "body typography token must export at 14pt")
+
+
 def test_standalone_html_export_inlines_scripts_and_cleans_runtime_state() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -369,6 +406,7 @@ def main() -> int:
         test_v2_table_uses_explicit_cell_font_sizes,
         test_v2_complex_chart_embeds_image_instead_of_placeholder,
         test_v2_image_backed_chart_resolves_relative_asset,
+        test_pptx_enforces_microsoft_yahei_and_typography_scale,
         test_standalone_html_export_inlines_scripts_and_cleans_runtime_state,
     ]
     for test in tests:
