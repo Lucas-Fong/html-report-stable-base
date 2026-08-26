@@ -247,7 +247,7 @@ HTML generation is usually fast; slow runs come from verification/export stages 
 - standalone HTML export inlining large local scripts, charts, images, or data assets;
 - running `qa_html_report.mjs`, `qa_editor_enhancements.mjs`, and `qa_preview_export.mjs` serially for every report.
 
-Default report delivery should run the static checker and only the browser checks that match the changed surface. Start `start_html_report_preview.mjs` for user-facing preview/export, because the service keeps Chromium warm for click-triggered PNG/PDF exports and reuses the submitted `html-pptx-data` for PPTX instead of launching another browser sync. Use `qa_preview_export.mjs` for release/export changes, not as a mandatory generation-time pre-export.
+普通内容生成默认只运行静态检查。仅在模板、编辑器、导出或视觉合同变更时运行浏览器验收。Default report delivery should run the static checker and only the browser checks that match the changed surface. Start `start_html_report_preview.mjs` for user-facing preview/export, because the service keeps Chromium warm for click-triggered PNG/PDF exports and reuses the submitted `html-pptx-data` for PPTX instead of launching another browser sync. Use `qa_preview_export.mjs` for release/export changes, not as a mandatory generation-time pre-export.
 
 ## Quality Gate
 

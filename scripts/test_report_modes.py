@@ -438,6 +438,12 @@ def test_dependency_bootstrap_contract() -> None:
         assert_true(token in bootstrap, f"bootstrap script must cover {token}")
 
 
+def test_skill_documents_static_checker_as_normal_generation_gate() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    assert_true("普通内容生成默认只运行静态检查" in skill, "skill must make the static checker the normal content-generation gate")
+    assert_true("仅在模板、编辑器、导出或视觉合同变更时运行浏览器验收" in skill, "skill must reserve browser QA for interactive/export contract changes")
+
+
 def main() -> int:
     tests = [
         test_mode_is_required,
@@ -456,6 +462,7 @@ def main() -> int:
         test_plugin_bundles_chart_and_word_cloud_skills,
         test_canonical_skill_and_plugin_names,
         test_dependency_bootstrap_contract,
+        test_skill_documents_static_checker_as_normal_generation_gate,
     ]
     for test in tests:
         test()
