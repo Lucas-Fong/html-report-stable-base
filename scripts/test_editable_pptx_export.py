@@ -92,7 +92,7 @@ def test_template_has_json_contract() -> None:
     assert_true("bodyClone?.classList.add('standalone-export')" in html, "standalone HTML download must mark the file as a delivery version")
     assert_true('script data-inline-asset="assets/echarts.min.js"' in html, "template must embed ECharts for browser-side standalone HTML export")
     assert_true('<script src="assets/echarts.min.js"></script>' not in html, "template must not depend on an external ECharts script")
-    assert_true("'<!doctype html>\\n' + clone.outerHTML" in html, "browser standalone HTML export must use a real newline after doctype")
+    assert_true("'<!doctype html>\\n' + html" in html, "browser standalone HTML export must use a real newline after doctype")
     assert_true("'<!doctype html>\\\\n' + clone.outerHTML" not in html, "browser standalone HTML export must not write visible backslash-n text")
 
 
