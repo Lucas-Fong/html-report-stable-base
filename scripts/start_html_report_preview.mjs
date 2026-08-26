@@ -168,9 +168,22 @@ async function withPage(options, callback) {
   }
 }
 
+async function requireLoadedImages(page) {
+  await page.waitForFunction(
+    () => [...document.images].every(image => image.complete),
+    null,
+    { timeout: 10_000 },
+  );
+  const missing = await page.evaluate(() => [...document.images]
+    .filter(image => !image.naturalWidth || !image.naturalHeight)
+    .map(image => image.currentSrc || image.getAttribute('src') || image.alt || '未命名图片'));
+  if (missing.length) throw new Error(`图片加载失败：${missing.join('、')}`);
+}
+
 async function captureSinglePage(snapshotPath, finalPath, format) {
   await withPage({ viewport: { width: 1645, height: 1000 }, deviceScaleFactor: 2 }, async page => {
     await page.goto(pathToFileURL(snapshotPath).href, { waitUntil: 'networkidle' });
+    await requireLoadedImages(page);
     await page.evaluate(() => {
       window.setEditMode?.(false);
       window.HTMLReportEditor?.selectElement?.(null);
@@ -193,6 +206,7 @@ async function captureSinglePage(snapshotPath, finalPath, format) {
 async function capturePptPdf(snapshotPath, finalPath) {
   await withPage({ viewport: { width: 1440, height: 810 }, deviceScaleFactor: 2 }, async page => {
     await page.goto(pathToFileURL(snapshotPath).href, { waitUntil: 'networkidle' });
+    await requireLoadedImages(page);
     await page.evaluate(() => {
       window.setEditMode?.(false);
       window.HTMLReportEditor?.selectElement?.(null);
@@ -217,6 +231,7 @@ async function capturePptPngs(snapshotPath, prefix) {
   const timestamp = Date.now();
   return withPage({ viewport: { width: 1440, height: 810 }, deviceScaleFactor: 2 }, async page => {
     await page.goto(pathToFileURL(snapshotPath).href, { waitUntil: 'networkidle' });
+    await requireLoadedImages(page);
     await page.evaluate(() => {
       window.setEditMode?.(false);
       window.HTMLReportEditor?.selectElement?.(null);

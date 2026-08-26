@@ -166,7 +166,7 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
 - Keep the fixed `1440 × 810` canvas, equal left/right margins, page navigation, PPT/adaptive browsing, table column controls, and geometry scaling.
 - The PPT/adaptive toggle uses a compact presentation-canvas icon, not a Unicode box-character icon.
 - Keep `html-pptx-data`, unique per-slide object names, DOM-to-JSON synchronization, and editable PPTX export.
-- Keep `HTML / 图片 / PDF / PPTX` export buttons. HTML must let the user choose `保留编辑` or `仅查看`; PNG, PDF and PPTX are generated only after the user clicks them in the local preview service. Export clicks must first synchronize DOM edits into `html-pptx-data`, submit the current `documentElement` snapshot to `/api/export`, and write outputs into `<output>/exports/`; PNG output must contain exactly one `1440×810` image per `.slide`, while PDF output must contain exactly one page per `.slide`.
+- Keep `HTML / 图片 / PDF / PPTX` export buttons. HTML must let the user choose `保留编辑` or `仅查看`; PNG, PDF and PPTX are generated only after the user clicks them in the local preview service. Export clicks must first synchronize DOM edits into `html-pptx-data`, submit the current `documentElement` snapshot to `/api/export`, and write outputs into `<output>/exports/`; PNG output must contain exactly one `1440×810` image per `.slide`, while PDF output must contain exactly one page per `.slide`. Before a PNG or PDF capture, wait until every document image has completed loading and has non-zero natural dimensions. If any image fails, return a clear export error and do not write a blank output file.
 - Page furniture such as kickers, footers, and page numbers remains fixed, non-editable, and `12px`/`12pt`.
 - Browser standalone HTML export must preserve edits and charts while hiding the drawer and gear.
 - In edit mode, `浏览与模式` must expose `#currentPageVisible` and `#restoreHiddenPages`. A hidden page is unavailable from normal navigation and all export snapshots (HTML/PNG/PDF/PPTX); remaining visible `.page-number` footers are renumbered from `01` without gaps. Keep at least one page visible. While editing, hidden pages may remain reachable only so the author can restore them.
@@ -221,6 +221,8 @@ If a future update adds a workflow GIF or screenshot, store it in `assets/exampl
 
    This is intentionally heavier than the static checker because it starts the preview service and exercises Chromium-backed exports. Do not run it as a default generation step for every ordinary report unless export behavior changed or the user needs immediate export verification.
 
+   The acceptance check must also prove that a snapshot with a missing local image is rejected instead of producing a blank PNG or PDF.
+
 14. Return `<output>/index.html` by default. Export standalone HTML only when requested:
 
    ```bash
@@ -266,6 +268,7 @@ Block delivery when any applicable check fails:
 - a selected image lacks a local-file replacement and crop path, its crop frame does not match the rendered image ratio, replacement changes a different image or its display geometry, or the cropped replacement is not retained in standalone HTML / PPT DOM synchronization;
 - the current-page visibility control is unavailable in edit mode, all pages can be hidden, a hidden page remains in navigation or an export snapshot, PPT visible footer page numbers do not renumber consecutively, or downloaded HTML does not use the visible cover title as a safe filename;
 - the drawer is wider than `320px`, global controls use a slider or bounded numeric input, the PPT/adaptive toggle lacks its presentation icon, export buttons do not match their mode, either mode's HTML export lacks its modal editability choice, PPT PDF export does not submit the updated browser snapshot, PPT PDF output does not contain one page per slide, or preview-service exports do not reflect the submitted page snapshot;
+- a PNG or PDF export writes an image while any source `<img>` has failed to load or has zero natural dimensions;
 - color controls lack a pasted HEX path, or a valid HEX value fails to update only the selected element;
 - the `补充识别` module is unavailable in either mode, cannot mark unrecognized text as editable text, or cannot mark a real table's cells as editable;
 - PPT output loses its canvas, navigation, JSON contract, or object uniqueness;

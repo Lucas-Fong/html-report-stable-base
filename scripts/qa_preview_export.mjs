@@ -53,6 +53,16 @@ try {
   const download = await fetch(`http://127.0.0.1:${port}${result.downloadUrl}`);
   const downloadBuffer = Buffer.from(await download.arrayBuffer());
   if (!download.ok || downloadBuffer.byteLength < 100) throw new Error('generated export download is unavailable');
+  const missingImageSnapshot = snapshot.replace(/<\/body>\s*<\/html>\s*$/, '<img src="missing-export-asset.png" alt="missing export asset"></body></html>');
+  const missingImageResponse = await fetch(`http://127.0.0.1:${port}/api/export`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode, format: 'png', html: missingImageSnapshot, title: '缺图验收' }),
+  });
+  const missingImageResult = await missingImageResponse.json();
+  if (missingImageResponse.ok || !/图片加载失败/.test(missingImageResult.error || '')) {
+    throw new Error(`preview export must reject an unloaded image: ${JSON.stringify(missingImageResult)}`);
+  }
   if (mode === 'ppt') {
     const slideCount = (snapshot.match(/class="[^"]*\bslide\b/g) || []).length;
     if (pdfPageCount(downloadBuffer) !== slideCount) throw new Error('PPT PDF export must contain one page per slide');
