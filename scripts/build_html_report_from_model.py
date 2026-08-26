@@ -12,6 +12,11 @@ from pathlib import Path
 
 
 VALID_MODES = {"single-page", "ppt"}
+ECHARTS_INLINE_SCRIPT = r'\s*<script\s+data-inline-asset=["\']assets/echarts\.min\.js["\']>[\s\S]*?</script>'
+ECHARTS_USAGE = re.compile(
+    r'(?:data-editable-element=["\']chart|class=["\'][^"\']*\bchart\b|\becharts\b)',
+    flags=re.I,
+)
 
 
 def read_text(path: Path) -> str:
@@ -117,6 +122,24 @@ def inline_shared_editor(html: str, template: Path) -> str:
     return html
 
 
+def model_requires_echarts(model: dict) -> bool:
+    """Keep the current runtime unless a PPT model explicitly opts out safely."""
+    if model.get("requiresEcharts") is not False:
+        return True
+    content = [slide.get("html", "") for slide in model.get("slides", [])]
+    content.append(model.get("customScript", ""))
+    return any(ECHARTS_USAGE.search(str(value)) for value in content)
+
+
+def remove_unused_echarts(html: str, model: dict, mode: str) -> str:
+    if mode != "ppt" or model_requires_echarts(model):
+        return html
+    trimmed, count = re.subn(ECHARTS_INLINE_SCRIPT, "", html, count=1, flags=re.I)
+    if count != 1:
+        raise SystemExit("PPT template is missing the inline ECharts runtime")
+    return trimmed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", type=Path, help="Report model JSON with explicit mode")
@@ -157,6 +180,7 @@ def main() -> int:
     if custom_script:
         html = insert_before_last("</body>", f'  <script data-report-script>\n{custom_script}\n  </script>\n', html, "closing body tag")
 
+    html = remove_unused_echarts(html, model, mode)
     html = inline_shared_editor(html, args.template)
     write_text(args.out, html)
     if args.assets:

@@ -141,6 +141,51 @@ def test_ppt_contract_remains_available() -> None:
         assert_true(checked.returncode == 0, checked.stderr or checked.stdout)
 
 
+def test_ppt_builder_omits_echarts_only_for_explicit_chart_free_model() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        cases = (
+            (
+                "chart-free",
+                {
+                    "mode": "ppt",
+                    "requiresEcharts": False,
+                    "title": "Chart-free deck",
+                    "slides": [{"title": "One", "html": "<h1>One</h1>", "objects": []}],
+                },
+                False,
+            ),
+            (
+                "chart-present",
+                {
+                    "mode": "ppt",
+                    "requiresEcharts": False,
+                    "title": "Chart deck",
+                    "slides": [{"title": "One", "html": '<div class="chart" data-editable-element="chart"></div>', "objects": []}],
+                },
+                True,
+            ),
+            (
+                "legacy-unspecified",
+                {
+                    "mode": "ppt",
+                    "title": "Legacy deck",
+                    "slides": [{"title": "One", "html": "<h1>One</h1>", "objects": []}],
+                },
+                True,
+            ),
+        )
+        for name, model, expects_echarts in cases:
+            output = tmp_path / f"{name}.html"
+            result = run_builder(model, PPT_TEMPLATE, output)
+            assert_true(result.returncode == 0, result.stderr or result.stdout)
+            has_echarts = 'data-inline-asset="assets/echarts.min.js"' in output.read_text(encoding="utf-8")
+            assert_true(
+                has_echarts is expects_echarts,
+                f"{name} ECharts runtime mismatch: expected {expects_echarts}, got {has_echarts}",
+            )
+
+
 def test_ppt_export_syncs_missing_named_dom_objects() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -400,6 +445,7 @@ def main() -> int:
         test_single_page_nav_is_readable_and_theme_bound,
         test_single_page_demo_fixture_builds,
         test_ppt_contract_remains_available,
+        test_ppt_builder_omits_echarts_only_for_explicit_chart_free_model,
         test_ppt_export_syncs_missing_named_dom_objects,
         test_ppt_export_syncs_unnamed_editable_dom_objects,
         test_shared_editor_contract,
