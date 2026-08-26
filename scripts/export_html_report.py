@@ -393,12 +393,25 @@ def px_to_emu(value: float, total_px: float, total_emu: int) -> int:
 def object_position(obj: dict, meta: dict, prs: Presentation) -> tuple[int, int, int, int]:
     width = float(meta.get("width", SLIDE_W))
     height = float(meta.get("height", SLIDE_H))
+    frame = obj.get("frame") if isinstance(obj.get("frame"), dict) else obj
     return (
-        px_to_emu(obj.get("x", 0), width, prs.slide_width),
-        px_to_emu(obj.get("y", 0), height, prs.slide_height),
-        px_to_emu(obj.get("w", obj.get("width", 0)), width, prs.slide_width),
-        px_to_emu(obj.get("h", obj.get("height", 0)), height, prs.slide_height),
+        px_to_emu(frame.get("x", 0), width, prs.slide_width),
+        px_to_emu(frame.get("y", 0), height, prs.slide_height),
+        px_to_emu(frame.get("w", frame.get("width", 0)), width, prs.slide_width),
+        px_to_emu(frame.get("h", frame.get("height", 0)), height, prs.slide_height),
     )
+
+
+def v2_text_style(obj: dict) -> dict | None:
+    style = obj.get("textStyle")
+    return style if isinstance(style, dict) else None
+
+
+def padding_pt(style: dict, side: str) -> float:
+    padding = style.get("paddingPt", 0)
+    if isinstance(padding, dict):
+        return float(padding.get(side, 0))
+    return float(padding)
 
 
 def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
@@ -407,22 +420,33 @@ def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     box.name = obj.get("name", "text")
     tf = box.text_frame
     tf.clear()
+    style = v2_text_style(obj)
+    if style:
+        tf.margin_left = Pt(padding_pt(style, "left"))
+        tf.margin_right = Pt(padding_pt(style, "right"))
+        tf.margin_top = Pt(padding_pt(style, "top"))
+        tf.margin_bottom = Pt(padding_pt(style, "bottom"))
+        tf.word_wrap = bool(style.get("wrap", True))
     paragraph = tf.paragraphs[0]
     paragraph.text = str(obj.get("text", ""))
-    align = obj.get("align")
+    align = style.get("align", obj.get("align")) if style else obj.get("align")
     if align == "center":
         paragraph.alignment = PP_ALIGN.CENTER
     elif align == "right":
         paragraph.alignment = PP_ALIGN.RIGHT
     elif align == "left":
         paragraph.alignment = PP_ALIGN.LEFT
+    if style:
+        paragraph.line_spacing = Pt(float(style.get("lineHeightPt", style.get("fontSizePt", 14) * 1.2)))
+        paragraph.space_before = Pt(0)
+        paragraph.space_after = Pt(0)
     run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
     set_run_font(
         run,
-        obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
-        ppt_font_size(obj, 14),
-        bool(obj.get("bold", False)),
-        obj.get("color"),
+        style.get("fontFamily") if style else obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
+        float(style.get("fontSizePt", 14)) if style else ppt_font_size(obj, 14),
+        bool(style.get("bold", obj.get("bold", False))) if style else bool(obj.get("bold", False)),
+        style.get("color", obj.get("color")) if style else obj.get("color"),
     )
 
 
@@ -452,28 +476,56 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     table_shape = slide.shapes.add_table(len(rows) + 1, len(columns), left, top, width, height)
     table_shape.name = obj.get("name", "table")
     table = table_shape.table
+    style = obj.get("tableStyle") if isinstance(obj.get("tableStyle"), dict) else {}
+    header_style = style.get("header") if isinstance(style.get("header"), dict) else {}
+    body_style = style.get("body") if isinstance(style.get("body"), dict) else {}
+    cell_padding = float(style.get("paddingPt", 0))
+    border_style = style.get("border") if isinstance(style.get("border"), dict) else {}
     column_widths = obj.get("columnWidths") or []
     if column_widths:
         total = sum(float(x) for x in column_widths) or 1
         for i, value in enumerate(column_widths[: len(columns)]):
             table.columns[i].width = int(width * float(value) / total)
+    row_heights = obj.get("rowHeights") or []
+    for i, row_height in enumerate(row_heights[: len(table.rows)]):
+        table.rows[i].height = px_to_emu(float(row_height), float(meta.get("height", SLIDE_H)), prs.slide_height)
     for c, heading in enumerate(columns):
         cell = table.cell(0, c)
         cell.text = str(heading)
         cell.fill.solid()
-        cell.fill.fore_color.rgb = parse_color(obj.get("headerFill"), "#172033")
+        cell.fill.fore_color.rgb = parse_color(header_style.get("fill", obj.get("headerFill")), "#172033")
+        cell.margin_left = Pt(cell_padding)
+        cell.margin_right = Pt(cell_padding)
+        cell.margin_top = Pt(cell_padding)
+        cell.margin_bottom = Pt(cell_padding)
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
-                set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, True, "#ffffff")
+                set_run_font(
+                    run,
+                    header_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
+                    float(header_style.get("fontSizePt", 14)),
+                    bool(header_style.get("bold", True)),
+                    header_style.get("color", "#ffffff"),
+                )
     for r, row in enumerate(rows, start=1):
         for c, value in enumerate(row[: len(columns)]):
             cell = table.cell(r, c)
             cell.text = str(value)
             cell.fill.solid()
-            cell.fill.fore_color.rgb = parse_color("#f8fafc" if r % 2 == 0 else "#ffffff")
+            cell.fill.fore_color.rgb = parse_color(body_style.get("fill", "#f8fafc" if r % 2 == 0 else "#ffffff"))
+            cell.margin_left = Pt(cell_padding)
+            cell.margin_right = Pt(cell_padding)
+            cell.margin_top = Pt(cell_padding)
+            cell.margin_bottom = Pt(cell_padding)
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
-                    set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 14, c == 0, "#334155")
+                    set_run_font(
+                        run,
+                        body_style.get("fontFamily", meta.get("fontFamily") or DEFAULT_FONT_FAMILY),
+                        float(body_style.get("fontSizePt", 14)),
+                        bool(body_style.get("bold", c == 0)),
+                        body_style.get("color", "#334155"),
+                    )
 
 
 def apply_chart_series_colors(chart, series_configs: list[dict]) -> None:
@@ -535,6 +587,12 @@ def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type
 
 
 def add_chart(slide, obj: dict, meta: dict, prs: Presentation) -> None:
+    if obj.get("renderMode") == "image" or obj.get("chartType") == "image":
+        source = obj.get("imageSrc") or obj.get("src")
+        if not source:
+            raise RuntimeError(f"Image-backed chart {obj.get('name', '')} has no image source")
+        add_image(slide, {**obj, "src": source}, meta, prs, Path("."))
+        return
     chart_type_name = obj.get("chartType") or obj.get("type")
     series_configs = obj.get("series") or []
     if chart_type_name not in CHART_TYPES:
@@ -571,7 +629,8 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
             handle.write(base64.b64decode(encoded))
             image_path = Path(handle.name)
         try:
-            slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+            picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+            picture.name = obj.get("name", "image")
         finally:
             image_path.unlink(missing_ok=True)
         return
@@ -587,7 +646,8 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
             for run in paragraph.runs:
                 set_run_font(run, meta.get("fontFamily") or DEFAULT_FONT_FAMILY, 12, False, "#64748b")
         return
-    slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    picture.name = obj.get("name", "image")
 
 
 def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:

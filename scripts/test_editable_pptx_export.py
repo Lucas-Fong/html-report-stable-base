@@ -193,6 +193,92 @@ def test_fixed_header_footer_page_number_fonts() -> None:
             assert_true('sz="6000"' not in slide_xml, "fixed roles must not inherit H1 PPTX font size")
 
 
+def test_v2_text_uses_explicit_point_metrics_and_zero_padding() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        html.write_text(
+            """
+<!doctype html><html><body data-report-mode="ppt">
+<script id="html-pptx-data" type="application/json">
+{
+  "pptxContractVersion": 2,
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+  "slides": [{"title": "v2", "objects": [
+    {"type": "text", "name": "metric-value", "frame": {"x": 70, "y": 160, "w": 260, "h": 36}, "text": "01", "textStyle": {"fontSizePt": 22.5, "lineHeightPt": 27, "paddingPt": {"top": 0, "right": 0, "bottom": 0, "left": 0}, "wrap": true, "bold": true, "color": "#2f6f68"}},
+    {"type": "text", "name": "metric-label", "frame": {"x": 70, "y": 205, "w": 260, "h": 24}, "text": "标签", "textStyle": {"fontSizePt": 10.5, "lineHeightPt": 14, "paddingPt": {"top": 0, "right": 0, "bottom": 0, "left": 0}, "wrap": true, "bold": true, "color": "#667085"}}
+  ]}]
+}
+</script>
+</body></html>
+""",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true('name="metric-value"' in slide_xml, "v2 metric must retain its object name")
+            assert_true('sz="2250"' in slide_xml, "v2 metric must use explicit 22.5pt size")
+            assert_true('<a:spcPts val="2700"' in slide_xml, "v2 metric must use explicit 27pt line height")
+            assert_true('lIns="0"' in slide_xml and 'tIns="0"' in slide_xml, "v2 text must not inherit PowerPoint default padding")
+
+
+def test_v2_table_uses_explicit_cell_font_sizes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        html.write_text(
+            """
+<!doctype html><html><body data-report-mode="ppt">
+<script id="html-pptx-data" type="application/json">
+{
+  "pptxContractVersion": 2,
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+  "slides": [{"title": "v2", "objects": [{
+    "type": "table", "name": "table", "frame": {"x": 70, "y": 260, "w": 640, "h": 200},
+    "columns": ["动作", "结果"], "rows": [["隐藏", "页码重排"]], "columnWidths": [1, 2], "rowHeights": [40, 56],
+    "tableStyle": {"header": {"fontSizePt": 10.5, "fill": "#2f6f68", "color": "#ffffff"}, "body": {"fontSizePt": 9, "color": "#334155"}, "paddingPt": 0.75, "border": {"color": "#d9dee8", "widthPt": 0.5}}
+  }]}]
+}
+</script>
+</body></html>
+""",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true('sz="1050"' in slide_xml, "v2 table header must use explicit point size")
+            assert_true('sz="900"' in slide_xml, "v2 table body must use explicit point size")
+
+
+def test_v2_complex_chart_embeds_image_instead_of_placeholder() -> None:
+    png_data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4HwAAAABJRU5ErkJggg=="
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        html.write_text(
+            f"""
+<!doctype html><html><body data-report-mode="ppt">
+<script id="html-pptx-data" type="application/json">
+{{
+  "pptxContractVersion": 2,
+  "meta": {{"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"}},
+  "slides": [{{"title": "v2", "objects": [{{"type": "chart", "name": "complex-chart", "frame": {{"x": 760, "y": 180, "w": 480, "h": 320}}, "renderMode": "image", "imageSrc": "{png_data_uri}"}}]}}]
+}}
+</script>
+</body></html>
+""",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            names = archive.namelist()
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            assert_true(any(name.startswith("ppt/media/") for name in names), "complex v2 chart must export its image")
+            assert_true("图表未嵌入" not in slide_xml, "complex v2 chart must not use the unsupported chart placeholder")
+
+
 def test_standalone_html_export_inlines_scripts_and_cleans_runtime_state() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -248,6 +334,9 @@ def main() -> int:
         test_pptx_requires_json_contract,
         test_json_exports_editable_table_and_chart,
         test_fixed_header_footer_page_number_fonts,
+        test_v2_text_uses_explicit_point_metrics_and_zero_padding,
+        test_v2_table_uses_explicit_cell_font_sizes,
+        test_v2_complex_chart_embeds_image_instead_of_placeholder,
         test_standalone_html_export_inlines_scripts_and_cleans_runtime_state,
     ]
     for test in tests:
