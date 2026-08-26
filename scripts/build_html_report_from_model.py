@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 VALID_MODES = {"single-page", "ppt"}
+PPTX_OBJECT_TYPES = {"text", "shape", "table", "chart", "image"}
 ECHARTS_INLINE_SCRIPT = r'\s*<script\s+data-inline-asset=["\']assets/echarts\.min\.js["\']>[\s\S]*?</script>'
 ECHARTS_USAGE = re.compile(
     r'(?:data-editable-element=["\']chart|class=["\'][^"\']*\bchart\b|\becharts\b)',
@@ -26,6 +27,29 @@ def read_text(path: Path) -> str:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def pptx_names_in_html(html: str) -> set[str]:
+    return set(re.findall(r'data-pptx-name=["\']([^"\']+)["\']', html))
+
+
+def validate_pptx_v2_slide(slide: dict, index: int) -> None:
+    objects = slide.get("objects", [])
+    object_names = {obj.get("name") for obj in objects if obj.get("name")}
+    dom_names = pptx_names_in_html(slide["html"])
+    missing = sorted(dom_names - object_names)
+    unbound = sorted(object_names - dom_names)
+    if missing:
+        raise SystemExit(f"slide {index} missing PPTX objects: {', '.join(missing)}")
+    if unbound:
+        raise SystemExit(f"slide {index} has unbound PPTX objects: {', '.join(unbound)}")
+    for obj in objects:
+        name = obj.get("name", "<unnamed>")
+        if obj.get("type") not in PPTX_OBJECT_TYPES:
+            raise SystemExit(f"slide {index} object {name} has invalid PPTX type")
+        frame = obj.get("frame")
+        if not isinstance(frame, dict) or not all(key in frame for key in ("x", "y", "w", "h")):
+            raise SystemExit(f"slide {index} object {name} must include frame with x/y/w/h")
 
 
 def validate_model(model: dict) -> str:
@@ -47,6 +71,8 @@ def validate_model(model: dict) -> str:
             duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
             if duplicates:
                 raise SystemExit(f"slide {index} has duplicate object names: {', '.join(duplicates)}")
+            if model.get("pptxContractVersion") == 2:
+                validate_pptx_v2_slide(item, index)
     return mode
 
 
@@ -78,7 +104,7 @@ def build_single_page_main(model: dict) -> str:
 
 
 def build_pptx_data(model: dict) -> dict:
-    return {
+    deck = {
         "meta": model.get("meta", {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"}),
         "slides": [
             {
@@ -89,6 +115,9 @@ def build_pptx_data(model: dict) -> dict:
             for slide in model["slides"]
         ],
     }
+    if model.get("pptxContractVersion") == 2:
+        deck["pptxContractVersion"] = 2
+    return deck
 
 
 def replace_once(pattern: str, replacement: str, text: str, label: str) -> str:
