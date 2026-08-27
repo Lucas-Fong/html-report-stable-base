@@ -423,6 +423,13 @@ def test_canonical_skill_and_plugin_names() -> None:
     assert_true(not (ROOT / "skills" / "html-report").exists(), "legacy html-report wrapper must not remain")
 
 
+def test_plugin_report_wrapper_has_a_compact_display_name() -> None:
+    metadata = ROOT / "skills" / "html-report-stable-base" / "agents" / "openai.yaml"
+    assert_true(metadata.exists(), "plugin report wrapper must provide its own UI metadata")
+    source = metadata.read_text(encoding="utf-8")
+    assert_true('display_name: "编辑器"' in source, "plugin report wrapper must use the compact display name")
+
+
 def test_dependency_bootstrap_contract() -> None:
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     dependencies = package.get("dependencies", {})
@@ -461,6 +468,7 @@ def main() -> int:
         test_metric_typography_is_a_seventh_global_level,
         test_plugin_bundles_chart_and_word_cloud_skills,
         test_canonical_skill_and_plugin_names,
+        test_plugin_report_wrapper_has_a_compact_display_name,
         test_dependency_bootstrap_contract,
         test_skill_documents_static_checker_as_normal_generation_gate,
     ]
