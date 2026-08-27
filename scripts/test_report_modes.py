@@ -416,8 +416,9 @@ def test_canonical_skill_and_plugin_names() -> None:
     root_skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     wrapper = ROOT / "skills" / "html-report-stable-base" / "SKILL.md"
+    assert_true(ROOT.name == "html-report", "plugin root folder must use the html-report namespace")
     assert_true("name: html-report-stable-base" in root_skill, "root skill must use the canonical name")
-    assert_true(manifest["name"] == "html-report-stable-base", "plugin manifest must use the canonical name")
+    assert_true(manifest["name"] == "html-report", "plugin manifest must use the html-report namespace")
     assert_true(wrapper.exists(), "plugin must expose the canonical wrapper")
     assert_true("name: html-report-stable-base" in wrapper.read_text(encoding="utf-8"), "wrapper must use the canonical name")
     assert_true(not (ROOT / "skills" / "html-report").exists(), "legacy html-report wrapper must not remain")

@@ -305,6 +305,38 @@ def test_v2_table_uses_explicit_cell_font_sizes() -> None:
             assert_true('sz="900"' in slide_xml, "v2 table body must use explicit point size")
 
 
+def test_image_is_cropped_to_its_pptx_frame() -> None:
+    """A source image with a different aspect ratio must not be stretched."""
+    source = ROOT / "assets" / "template" / "assets" / "logo-qianwen.png"
+    with tempfile.TemporaryDirectory() as tmp:
+        html = Path(tmp) / "deck.html"
+        deck = {
+            "pptxContractVersion": 2,
+            "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+            "slides": [{"title": "图片裁剪", "objects": [{
+                "type": "image",
+                "name": "square-image-in-wide-frame",
+                "frame": {"x": 100, "y": 100, "w": 320, "h": 160},
+                "src": str(source),
+            }]}],
+        }
+        html.write_text(
+            '<!doctype html><html><body data-report-mode="ppt">\n'
+            '<script id="html-pptx-data" type="application/json">\n'
+            + json.dumps(deck, ensure_ascii=False)
+            + "\n</script>\n</body></html>",
+            encoding="utf-8",
+        )
+        result = run(str(html), "--formats", "pptx", "--out-dir", tmp)
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+        with zipfile.ZipFile(Path(tmp) / "deck.pptx") as archive:
+            slide_xml = archive.read("ppt/slides/slide1.xml").decode("utf-8")
+            crop = re.search(r"<a:srcRect\b([^>]*)/>", slide_xml)
+            assert_true(crop is not None, "aspect-ratio mismatch must create a PowerPoint crop rectangle")
+            attrs = crop.group(1)
+            assert_true('t="25000"' in attrs and 'b="25000"' in attrs, "square source must crop equally above and below for a 2:1 frame")
+
+
 def test_v2_complex_chart_embeds_image_instead_of_placeholder() -> None:
     png_data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4HwAAAABJRU5ErkJggg=="
     with tempfile.TemporaryDirectory() as tmp:
@@ -457,6 +489,7 @@ def main() -> int:
         test_fixed_header_footer_page_number_fonts,
         test_v2_text_uses_explicit_point_metrics_and_zero_padding,
         test_v2_table_uses_explicit_cell_font_sizes,
+        test_image_is_cropped_to_its_pptx_frame,
         test_v2_complex_chart_embeds_image_instead_of_placeholder,
         test_v2_image_backed_chart_resolves_relative_asset,
         test_pptx_enforces_microsoft_yahei_and_typography_scale,

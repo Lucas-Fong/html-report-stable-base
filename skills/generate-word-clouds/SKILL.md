@@ -39,7 +39,7 @@ python scripts/extract_xlsx.py input.xlsx config.json --top-n 50 \
 node scripts/generate_word_clouds.mjs config.json output-directory
 ```
 
-提取器同时接受 `{列表名: [色值...]}` 映射或 `brand_palettes.json` 的缓存格式。作为 `html-report-stable-base` 插件内置 skill 使用时，若依赖缺失，先在插件根目录运行 `node scripts/bootstrap_html_report_deps.mjs`，让 `sharp` 和 `openpyxl` 可用。CSV、JSON 或粘贴数据可直接整理成生成器配置。
+提取器同时接受 `{列表名: [色值...]}` 映射或 `brand_palettes.json` 的缓存格式。作为 `html-report` 插件内置 skill 使用时，若依赖缺失，先在插件根目录运行 `node scripts/bootstrap_html_report_deps.mjs`，让 `sharp` 和 `openpyxl` 可用。CSV、JSON 或粘贴数据可直接整理成生成器配置。
 
 7. 用一个批次检查所有输出，不为每张图重复启动检查流程：
    - 文件为 PNG，透明底时必须含 Alpha 通道。
