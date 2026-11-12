@@ -56,8 +56,7 @@ PPT_THEME_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 PPT_TYPOGRAPHY_SCALE = {
     "coverTitle": {"fontSizePt": 42, "lineHeightPt": 50},
     "pageTitle": {"fontSizePt": 28, "lineHeightPt": 34},
-    "sectionTitle": {"fontSizePt": 18, "lineHeightPt": 24},
-    "subtitle": {"fontSizePt": 14, "lineHeightPt": 21},
+    "sectionTitle": {"fontSizePt": 20, "lineHeightPt": 24},
     "metric": {"fontSizePt": 28, "lineHeightPt": 34},
     "body": {"fontSizePt": 14, "lineHeightPt": 20},
     "note": {"fontSizePt": 11, "lineHeightPt": 14},
@@ -66,8 +65,7 @@ PPT_TYPOGRAPHY_SCALE = {
 PPT_LEVEL_FONT_SIZES = {
     "h1": 42,
     "h2": 28,
-    "h3": 18,
-    "h4": 14,
+    "h3": 20,
     "metric": 28,
     "body": 14,
 }
@@ -429,7 +427,6 @@ def typography_token(obj: dict, style: dict | None, meta: dict) -> str | None:
         "h1": "coverTitle",
         "h2": "pageTitle",
         "h3": "sectionTitle",
-        "h4": "subtitle",
         "metric": "metric",
         "body": "body",
         "note": "note",
@@ -512,15 +509,14 @@ def add_text(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         paragraph.line_spacing = Pt(line_height_pt)
         paragraph.space_before = Pt(0)
         paragraph.space_after = Pt(0)
-    runs = paragraph.runs or [paragraph.add_run()]
-    for run in runs:
-        set_run_font(
-            run,
-            style.get("fontFamily") if style else obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
-            font_size_pt if style else ppt_font_size(obj, 14),
-            bool(style.get("bold", obj.get("bold", False))) if style else bool(obj.get("bold", False)),
-            style.get("color", obj.get("color")) if style else obj.get("color"),
-        )
+    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+    set_run_font(
+        run,
+        style.get("fontFamily") if style else obj.get("fontFamily") or meta.get("fontFamily") or DEFAULT_FONT_FAMILY,
+        font_size_pt if style else ppt_font_size(obj, 14),
+        bool(style.get("bold", obj.get("bold", False))) if style else bool(obj.get("bold", False)),
+        style.get("color", obj.get("color")) if style else obj.get("color"),
+    )
 
 
 def add_shape(slide, obj: dict, meta: dict, prs: Presentation) -> None:
@@ -531,18 +527,10 @@ def add_shape(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     set_fill(shape, obj.get("fill", "#ffffff"))
     line = obj.get("line", "#dbe4f0")
     set_line(shape, line if line == "none" else {"color": line, "width": obj.get("lineWidth")})
-    # python-pptx creates a p:style with a theme effectRef by default.  That
-    # reference can add a PowerPoint shadow even when the source HTML has none.
-    # Shapes already receive their explicit fill and line above, so remove the
-    # inherited style entirely to keep rectangles visually flat.
-    style = shape._element.find(qn("p:style"))
-    if style is not None:
-        shape._element.remove(style)
     if obj.get("radius") is not None and obj.get("shape") in {"roundRect", "roundedRect"}:
         try:
             radius = float(obj.get("radius", 8))
-            frame = obj.get("frame") if isinstance(obj.get("frame"), dict) else obj
-            min_side = max(1.0, min(float(frame.get("w", 1)), float(frame.get("h", 1))))
+            min_side = max(1.0, min(float(obj.get("w", 1)), float(obj.get("h", 1))))
             shape.adjustments[0] = max(0.0, min(0.18, radius / min_side))
         except Exception:
             pass
@@ -629,36 +617,6 @@ def apply_chart_series_colors(chart, series_configs: list[dict]) -> None:
             pass
 
 
-def normalize_chart_axis_ids(chart, shape_id: int) -> None:
-    """Write OOXML-valid unsigned axis IDs for native category charts.
-
-    python-pptx may serialize its internally generated axis IDs as signed
-    integers. PowerPoint tolerates that, but strict OOXML readers reject it.
-    """
-    axes = []
-    for axis_name in ("category_axis", "value_axis"):
-        try:
-            axes.append(getattr(chart, axis_name)._element)
-        except (AttributeError, ValueError):
-            continue
-    if len(axes) != 2:
-        return
-    first_id = 1_000_000 + max(1, int(shape_id)) * 2
-    axis_ids = (first_id, first_id + 1)
-    replacements = {}
-    for index, axis in enumerate(axes):
-        ax_id = axis.find(qn("c:axId"))
-        cross_ax = axis.find(qn("c:crossAx"))
-        if ax_id is not None:
-            replacements[ax_id.get("val")] = str(axis_ids[index])
-            ax_id.set("val", str(axis_ids[index]))
-        if cross_ax is not None:
-            cross_ax.set("val", str(axis_ids[1 - index]))
-    for ax_id in chart._element.iter(qn("c:axId")):
-        if ax_id.get("val") in replacements:
-            ax_id.set("val", replacements[ax_id.get("val")])
-
-
 def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type_name: str, series_configs: list[dict], name_suffix: str = "", overlay: bool = False):
     chart_type = CHART_TYPES.get(chart_type_name)
     if not chart_type:
@@ -682,7 +640,6 @@ def add_single_chart(slide, obj: dict, meta: dict, prs: Presentation, chart_type
         chart.legend.position = XL_LEGEND_POSITION.BOTTOM if chart_type_name != "pie" else XL_LEGEND_POSITION.RIGHT
         chart.legend.include_in_layout = False
     apply_chart_series_colors(chart, series_configs)
-    normalize_chart_axis_ids(chart, frame.shape_id)
     if overlay:
         chart.has_legend = False
         try:
@@ -729,24 +686,6 @@ def add_chart(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
     add_single_chart(slide, obj, meta, prs, chart_type_name, series_configs)
 
 
-def crop_picture_to_frame(picture, image_path: Path) -> None:
-    """Fill a PPTX image frame by cropping instead of changing its aspect ratio."""
-    with Image.open(image_path) as source:
-        source_width, source_height = source.size
-    if source_width <= 0 or source_height <= 0 or picture.height <= 0:
-        return
-    source_ratio = source_width / source_height
-    frame_ratio = picture.width / picture.height
-    if source_ratio > frame_ratio:
-        crop = (1 - frame_ratio / source_ratio) / 2
-        picture.crop_left = crop
-        picture.crop_right = crop
-    elif source_ratio < frame_ratio:
-        crop = (1 - source_ratio / frame_ratio) / 2
-        picture.crop_top = crop
-        picture.crop_bottom = crop
-
-
 def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> None:
     src = obj.get("src")
     if not src:
@@ -761,7 +700,6 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
         try:
             picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
             picture.name = obj.get("name", "image")
-            crop_picture_to_frame(picture, image_path)
         finally:
             image_path.unlink(missing_ok=True)
         return
@@ -779,7 +717,6 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
         return
     picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
     picture.name = obj.get("name", "image")
-    crop_picture_to_frame(picture, image_path)
 
 
 def export_editable_pptx(deck: dict, out_path: Path, root: Path) -> None:

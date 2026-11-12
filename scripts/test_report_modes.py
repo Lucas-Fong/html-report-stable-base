@@ -416,19 +416,11 @@ def test_canonical_skill_and_plugin_names() -> None:
     root_skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     wrapper = ROOT / "skills" / "html-report-stable-base" / "SKILL.md"
-    assert_true(ROOT.name == "html-report", "plugin root folder must use the html-report namespace")
     assert_true("name: html-report-stable-base" in root_skill, "root skill must use the canonical name")
-    assert_true(manifest["name"] == "html-report", "plugin manifest must use the html-report namespace")
+    assert_true(manifest["name"] == "html-report-stable-base", "plugin manifest must use the canonical name")
     assert_true(wrapper.exists(), "plugin must expose the canonical wrapper")
     assert_true("name: html-report-stable-base" in wrapper.read_text(encoding="utf-8"), "wrapper must use the canonical name")
     assert_true(not (ROOT / "skills" / "html-report").exists(), "legacy html-report wrapper must not remain")
-
-
-def test_plugin_report_wrapper_has_a_compact_display_name() -> None:
-    metadata = ROOT / "skills" / "html-report-stable-base" / "agents" / "openai.yaml"
-    assert_true(metadata.exists(), "plugin report wrapper must provide its own UI metadata")
-    source = metadata.read_text(encoding="utf-8")
-    assert_true('display_name: "编辑器"' in source, "plugin report wrapper must use the compact display name")
 
 
 def test_dependency_bootstrap_contract() -> None:
@@ -469,7 +461,6 @@ def main() -> int:
         test_metric_typography_is_a_seventh_global_level,
         test_plugin_bundles_chart_and_word_cloud_skills,
         test_canonical_skill_and_plugin_names,
-        test_plugin_report_wrapper_has_a_compact_display_name,
         test_dependency_bootstrap_contract,
         test_skill_documents_static_checker_as_normal_generation_gate,
     ]

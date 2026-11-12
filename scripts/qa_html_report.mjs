@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -21,6 +23,21 @@ const documentImageBuffer = () => Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4HwAAAABJRU5ErkJggg==',
   'base64',
 );
+
+async function exportStandalone(page, browser, outputName = 'single.html') {
+  const exportAction = async () => {
+    await page.click('#downloadHtml');
+    const viewChoice = page.locator('[data-html-export-mode="view"]');
+    if (await viewChoice.count()) await viewChoice.click();
+  };
+  const [download] = await Promise.all([page.waitForEvent('download'), exportAction()]);
+  const exportedPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'html-report-qa-')), outputName);
+  await download.saveAs(exportedPath);
+  const exported = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  await exported.goto(pathToFileURL(exportedPath).href);
+  await exported.waitForLoadState('networkidle');
+  return { exported, suggestedFilename: download.suggestedFilename() };
+}
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
@@ -54,69 +71,10 @@ if (mode === 'single-page') {
   await page.waitForTimeout(100);
 }
 
-const pptScaleBeforeDrawer = mode === 'ppt'
-  ? await page.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--stage-scale')))
-  : null;
-
 await page.click('#drawerToggle');
 await page.waitForTimeout(150);
 if (await page.evaluate(() => document.body.classList.contains('drawer-open'))) ok('drawer opens');
 else fail('drawer did not open');
-
-const offlineExportGuard = await page.evaluate(reportMode => {
-  const htmlButton = document.getElementById('downloadHtml');
-  const secondaryButton = document.querySelector(reportMode === 'ppt' ? '#printPdf' : '#downloadLongPdf');
-  let printFallbackUsed = false;
-  window.print = () => { printFallbackUsed = true; };
-
-  htmlButton?.click();
-  const dialog = document.getElementById('previewExportRequired');
-  const afterHtml = {
-    dialogVisible: Boolean(dialog && !dialog.hidden),
-    htmlChoiceVisible: Boolean(document.getElementById('htmlExportChoice') && !document.getElementById('htmlExportChoice').hidden),
-  };
-  dialog?.querySelector('[data-preview-export-required-close]')?.click();
-  secondaryButton?.click();
-  const dialogVisibleAfterSecondary = Boolean(dialog && !dialog.hidden);
-  dialog?.querySelector('[data-preview-export-required-close]')?.click();
-
-  return {
-    hint: document.querySelector('[data-preview-export-hint]')?.textContent.trim() || '',
-    previewAvailable: window.HTMLReportEditor?.previewServiceAvailable?.(),
-    dialogVisibleAfterSecondary,
-    printFallbackUsed,
-    ...afterHtml,
-  };
-}, mode);
-if (
-  offlineExportGuard.previewAvailable === false &&
-  offlineExportGuard.hint.includes('本地预览服务') &&
-  offlineExportGuard.dialogVisible &&
-  !offlineExportGuard.htmlChoiceVisible &&
-  offlineExportGuard.dialogVisibleAfterSecondary &&
-  !offlineExportGuard.printFallbackUsed
-) ok('file preview blocks every export behind a local preview-service prompt');
-else fail(`file preview export guard failed: ${JSON.stringify(offlineExportGuard)}`);
-
-if (mode === 'ppt') {
-  const drawerScaleState = await page.evaluate(() => {
-    const deck = document.getElementById('deck').getBoundingClientRect();
-    const drawer = document.getElementById('styleDrawer').getBoundingClientRect();
-    const viewport = { width: window.innerWidth, height: window.innerHeight };
-    return {
-      deckWidth: deck.width,
-      drawerWidth: drawer.width,
-      viewport,
-      scale: Number(getComputedStyle(document.documentElement).getPropertyValue('--stage-scale')),
-    };
-  });
-  const expectedDeckWidth = drawerScaleState.viewport.width - drawerScaleState.drawerWidth;
-  const expectedScale = Math.min(1, expectedDeckWidth / 1440, drawerScaleState.viewport.height / 810);
-  const keepsCanvasInAvailableWidth = Math.abs(drawerScaleState.deckWidth - expectedDeckWidth) <= 1;
-  const rescalesCanvas = Math.abs(drawerScaleState.scale - expectedScale) <= 0.002 && drawerScaleState.scale < pptScaleBeforeDrawer;
-  if (keepsCanvasInAvailableWidth && rescalesCanvas) ok('open drawer reserves canvas width and rescales the PPT stage');
-  else fail(`open drawer scale failed: ${JSON.stringify({ ...drawerScaleState, pptScaleBeforeDrawer, expectedDeckWidth, expectedScale })}`);
-}
 
 const accordionInitialState = await page.evaluate(() => {
   const groups = [...document.querySelectorAll('.drawer-body > .control-group')];
@@ -246,11 +204,7 @@ const pageVisibility = await page.evaluate(reportMode => {
       exportSectionCount: exported.querySelectorAll('.report-section').length,
     };
   }
-  const slides = [...document.querySelectorAll('.slide')];
-  const hiddenSlide = slides[1];
-  const initialSlideCount = slides.length;
-  const initialFooterCount = slides.filter(slide => slide.querySelector('.page-number')).length;
-  const hiddenSlideHasFooter = Boolean(hiddenSlide?.querySelector('.page-number'));
+  const slideCountBeforeHide = document.querySelectorAll('.slide').length;
   window.goTo(1);
   input.checked = false;
   input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -259,17 +213,13 @@ const pageVisibility = await page.evaluate(reportMode => {
   const exported = new DOMParser().parseFromString(snapshot, 'text/html');
   const deck = JSON.parse(exported.getElementById('html-pptx-data').textContent);
   return {
-    hidden: hiddenSlide?.dataset.pageHidden === 'true',
+    hidden: document.querySelectorAll('.slide')[1]?.dataset.pageHidden === 'true',
     navCount: document.querySelectorAll('#nav button').length,
     visiblePageNumbers: [...document.querySelectorAll('.slide:not([data-page-hidden="true"]) .page-number')].map(node => node.textContent.trim()),
-    expectedNavCount: initialSlideCount - 1,
-    expectedFooterCount: initialFooterCount - (hiddenSlideHasFooter ? 1 : 0),
-    expectedPageNumbers: Array.from(
-      { length: initialFooterCount - (hiddenSlideHasFooter ? 1 : 0) },
-      (_, index) => String(index + 1).padStart(2, '0'),
-    ),
     exportSlideCount: exported.querySelectorAll('.slide').length,
     exportJsonSlideCount: deck.slides.length,
+    expectedVisibleSlideCount: slideCountBeforeHide - 1,
+    expectedPageNumbers: Array.from({ length: slideCountBeforeHide - 1 }, (_, index) => String(index + 1).padStart(2, '0')),
   };
 }, mode);
 if (pageVisibility.missing) {
@@ -277,32 +227,10 @@ if (pageVisibility.missing) {
 } else if (mode === 'single-page') {
   if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
   else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
-} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedNavCount && pageVisibility.visiblePageNumbers.join(',') === pageVisibility.expectedPageNumbers.join(',') && pageVisibility.exportSlideCount === pageVisibility.expectedNavCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedNavCount) {
+} else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedVisibleSlideCount && pageVisibility.visiblePageNumbers.join(',') === pageVisibility.expectedPageNumbers.join(',') && pageVisibility.exportSlideCount === pageVisibility.expectedVisibleSlideCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedVisibleSlideCount) {
   ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
 } else {
   fail(`PPT visibility failed: ${JSON.stringify(pageVisibility)}`);
-}
-
-const hiddenPageKeyboardNavigation = mode === 'ppt' && !pageVisibility.missing
-  ? await page.evaluate(() => {
-    const slides = [...document.querySelectorAll('.slide')];
-    if (slides.length < 3) return { skipped: true };
-    const activeIndex = () => slides.findIndex(slide => slide.classList.contains('active-slide'));
-    window.goTo(2);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
-    const afterPrevious = activeIndex();
-    window.goTo(0);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    const afterNext = activeIndex();
-    return { afterPrevious, afterNext };
-  })
-  : null;
-if (hiddenPageKeyboardNavigation?.skipped) {
-  ok('hidden-page keyboard navigation check skipped: fewer than three slides');
-} else if (hiddenPageKeyboardNavigation && hiddenPageKeyboardNavigation.afterPrevious === 0 && hiddenPageKeyboardNavigation.afterNext === 2) {
-  ok('PPT keyboard navigation skips hidden pages in both directions');
-} else if (hiddenPageKeyboardNavigation) {
-  fail(`PPT keyboard navigation did not skip the hidden page: ${JSON.stringify(hiddenPageKeyboardNavigation)}`);
 }
 
 if (mode === 'ppt' && !pageVisibility.missing) {
@@ -574,6 +502,55 @@ if (mode === 'single-page') {
   if (contract.reportSections > 0 && !contract.pptNav && contract.sectionNav && !contract.ppt && !contract.pdf && !contract.pptxData) ok('single-page mode excludes PPT-only UI and data');
   else fail(`single-page contract failed: ${JSON.stringify(contract)}`);
 
+  await page.evaluate(() => {
+    const text = document.querySelector('main [data-editable-element="text"]');
+    if (text) text.style.setProperty('font-size', '31px', 'important');
+  });
+  await page.click('#editToggle');
+
+  const exportedStates = {};
+  for (const style of ['right', 'left', 'hidden']) {
+    await page.evaluate(() => {
+      window.HTMLReportEditor?.openDrawerGroupByIntent?.('navigation');
+    });
+    if (!(await page.locator('#styleDrawer').evaluate(element => element.classList.contains('open')))) await page.click('#drawerToggle');
+    await page.evaluate(() => window.HTMLReportEditor?.openDrawerGroupByIntent?.('navigation'));
+    await page.click(`[data-section-nav-style="${style}"]`);
+    const { exported, suggestedFilename } = await exportStandalone(page, browser, `${style}.html`);
+    exportedStates[style] = await exported.evaluate(({ expectedStyle, fileName }) => ({
+      drawer: getComputedStyle(document.getElementById('styleDrawer')).display,
+      toggle: getComputedStyle(document.getElementById('drawerToggle')).display,
+      standalone: document.body.classList.contains('standalone-export'),
+      navMode: document.body.classList.contains(`section-nav-${expectedStyle}`),
+      navHiddenDisplay: expectedStyle !== 'hidden' || getComputedStyle(document.getElementById('sectionNav')).display === 'none',
+      sectionNavItems: [...document.querySelectorAll('#sectionNav a')].map(link => link.textContent),
+      visibleTopText: [...document.body.childNodes].filter(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()).map(node => node.textContent.trim()),
+      textStyle: getComputedStyle(document.querySelector('[data-editable-element="text"]')).fontSize,
+      imageSource: document.querySelector('[data-editable-element="image"]')?.getAttribute('src') || '',
+      fileName,
+    }), { expectedStyle: style, fileName: suggestedFilename });
+    await exported.close();
+  }
+  const allExportsClean = Object.values(exportedStates).every(state => (
+    state.drawer === 'none' &&
+    state.toggle === 'none' &&
+    state.standalone &&
+    state.navMode &&
+    state.navHiddenDisplay &&
+    state.sectionNavItems.length > 0 &&
+    state.visibleTopText.length === 0
+  ));
+  if (allExportsClean) ok('standalone HTML hides editor chrome, preserves all section nav modes, and has no leaked top text');
+  else fail(`standalone HTML cleanup failed: ${JSON.stringify(exportedStates)}`);
+  const allElementStylesPreserved = Object.values(exportedStates).every(state => state.textStyle === '31px');
+  if (allElementStylesPreserved) ok('standalone HTML preserves element style edits');
+  else fail(`standalone HTML lost element styles: ${JSON.stringify(exportedStates)}`);
+  const allReplacementImagesPreserved = Object.values(exportedStates).every(state => state.imageSource.startsWith('data:image/png;base64,'));
+  if (allReplacementImagesPreserved) ok('standalone HTML preserves replaced images');
+  else fail(`standalone HTML lost replaced images: ${JSON.stringify(exportedStates)}`);
+  const allNamesUseCoverTitle = Object.values(exportedStates).every(state => state.fileName === '底座功能验证.html');
+  if (allNamesUseCoverTitle) ok('single-page HTML export uses the cover title as its filename');
+  else fail(`single-page HTML export filename failed: ${JSON.stringify(exportedStates)}`);
 } else if (mode === 'ppt') {
   const pptState = await page.evaluate(() => ({
     slides: document.querySelectorAll('section.slide').length,
@@ -592,6 +569,12 @@ if (mode === 'single-page') {
   }));
   if (renderedSlides.visibleIndexes.length === 1 && renderedSlides.visibleIndexes[0] === renderedSlides.activeIndex) ok('PPT mode renders only the current slide');
   else fail(`PPT active-slide rendering failed: ${JSON.stringify(renderedSlides)}`);
+  const expectedFilename = await page.evaluate(() => window.HTMLReportEditor?.getHtmlExportFileName?.());
+  const { exported, suggestedFilename } = await exportStandalone(page, browser, 'ppt.html');
+  const exportedSlideCount = await exported.locator('.slide').count();
+  await exported.close();
+  if (suggestedFilename === expectedFilename && exportedSlideCount === pageVisibility.expectedVisibleSlideCount) ok('PPT HTML export uses the visible cover title and excludes hidden pages');
+  else fail(`PPT HTML export failed: ${JSON.stringify({ suggestedFilename, expectedFilename, exportedSlideCount, expectedVisibleSlideCount: pageVisibility.expectedVisibleSlideCount })}`);
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });

@@ -1,4 +1,0 @@
-interface:
-  display_name: "编辑器"
-  short_description: "将已有内容或 HTML 转为可编辑单页报告和 16:9 HTML PPT"
-  default_prompt: "使用 $html-report:html-report-stable-base 把我提供的内容或现有 HTML 转为可编辑报告。"

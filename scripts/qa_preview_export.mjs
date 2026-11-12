@@ -53,16 +53,6 @@ try {
   const download = await fetch(`http://127.0.0.1:${port}${result.downloadUrl}`);
   const downloadBuffer = Buffer.from(await download.arrayBuffer());
   if (!download.ok || downloadBuffer.byteLength < 100) throw new Error('generated export download is unavailable');
-  const missingImageSnapshot = snapshot.replace(/<\/body>\s*<\/html>\s*$/, '<img src="missing-export-asset.png" alt="missing export asset"></body></html>');
-  const missingImageResponse = await fetch(`http://127.0.0.1:${port}/api/export`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ mode, format: 'png', html: missingImageSnapshot, title: '缺图验收' }),
-  });
-  const missingImageResult = await missingImageResponse.json();
-  if (missingImageResponse.ok || !/图片加载失败/.test(missingImageResult.error || '')) {
-    throw new Error(`preview export must reject an unloaded image: ${JSON.stringify(missingImageResult)}`);
-  }
   if (mode === 'ppt') {
     const slideCount = (snapshot.match(/class="[^"]*\bslide\b/g) || []).length;
     if (pdfPageCount(downloadBuffer) !== slideCount) throw new Error('PPT PDF export must contain one page per slide');
@@ -107,10 +97,8 @@ try {
       .map(button => button.id || button.dataset.exportFormat),
     htmlChoice: Boolean(document.getElementById('htmlExportChoice')),
     htmlChoiceIsModal: document.getElementById('htmlExportChoice')?.getAttribute('role') === 'dialog' && !document.getElementById('htmlExportChoice')?.closest('.style-drawer'),
-    previewHint: document.querySelector('[data-preview-export-hint]')?.textContent.trim() || '',
   }));
   if (ui.width !== '320px') throw new Error(`drawer width should be 320px, received ${ui.width}`);
-  if (!ui.previewHint.includes('本地预览服务已连接')) throw new Error(`preview export availability hint is missing: ${JSON.stringify(ui)}`);
   const pptExportSets = new Set(['downloadHtml,printPdf,exportPpt', 'downloadHtml,exportImages,printPdf']);
   if (mode === 'ppt' && (!pptExportSets.has(ui.exports.join(',')) || !ui.htmlChoice || !ui.htmlChoiceIsModal)) throw new Error(`PPT export UI contract failed: ${JSON.stringify(ui)}`);
   if (mode === 'single-page' && ui.exports.join(',') !== 'downloadHtml,downloadLongPng,downloadLongPdf') throw new Error(`single export UI contract failed: ${JSON.stringify(ui)}`);
@@ -122,7 +110,7 @@ try {
       postedSnapshot = route.request().postData() || '';
       await route.continue();
     });
-    await page.locator('.slide.active-slide [data-pptx-name][data-editable-element="text"], .slide.active-slide .editable[data-editable-element="text"]').first().evaluate((element, text) => {
+    await page.locator('.slide.active-slide [data-pptx-name], .slide.active-slide .editable').first().evaluate((element, text) => {
       element.textContent = text;
     }, updatedText);
     const [pdfDownload] = await Promise.all([

@@ -129,15 +129,6 @@
     .html-export-choice-actions button { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font-weight: 700; }
     .html-export-choice-actions button[data-html-export-mode="editable"] { border-color: var(--accent); background: var(--accent); color: #fff; }
     .html-export-choice-cancel { justify-self: end; border: 0; background: transparent; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
-    .preview-export-required { position: fixed; z-index: 121; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, .38); }
-    .preview-export-required[hidden] { display: none; }
-    .preview-export-required-panel { width: min(380px, 100%); display: grid; gap: 14px; padding: 20px; border: 1px solid #d5dee8; border-radius: 8px; background: #fff; box-shadow: 0 24px 60px rgba(15, 23, 42, .22); }
-    .preview-export-required-panel h4, .preview-export-required-panel p { margin: 0; }
-    .preview-export-required-panel h4 { font-size: 17px; color: var(--ink); }
-    .preview-export-required-panel p { color: var(--muted); font-size: 13px; line-height: 1.55; }
-    .preview-export-required-panel button { justify-self: end; min-height: 34px; padding: 7px 12px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: #fff; font-weight: 700; }
-    .export-preview-hint { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-    .export-preview-hint.is-ready { color: #17665d; }
     .drawer-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .drawer-title-row h3, .control-group h4 { margin: 0; font-family: Arial, sans-serif; letter-spacing: 0; }
     .drawer-title-row h3 { font-size: 18px; }
@@ -349,7 +340,6 @@
         <button id="downloadLongPng" type="button" data-export-format="png">图片</button>
         <button id="downloadLongPdf" type="button" data-export-format="pdf">PDF</button>
       </div>
-      <p class="export-preview-hint" data-preview-export-hint>导出独立 HTML、图片、PDF 和 PPTX 前，请通过本地预览服务地址打开报告。</p>
       <div class="drawer-about">
         <a href="https://github.com/Lucas-Fong/html-report-stable-base" target="_blank" rel="noopener">GitHub 项目</a>
         <span>Lucas Fong</span>
@@ -358,13 +348,6 @@
       </div>
     </div>
   </aside>
-  <div class="preview-export-required" id="previewExportRequired" role="alertdialog" aria-modal="true" aria-labelledby="previewExportRequiredTitle" hidden>
-    <div class="preview-export-required-panel">
-      <h4 id="previewExportRequiredTitle">请先使用本地预览服务</h4>
-      <p>当前报告以本地文件打开。请通过本地预览服务地址打开后，再导出独立 HTML、图片或 PDF。</p>
-      <button type="button" data-preview-export-required-close>我知道了</button>
-    </div>
-  </div>
   <div class="html-export-choice" id="htmlExportChoice" role="dialog" aria-modal="true" aria-labelledby="htmlExportChoiceTitle" hidden>
     <div class="html-export-choice-panel">
       <h4 id="htmlExportChoiceTitle">导出 HTML</h4>
@@ -436,13 +419,9 @@
         htmlExportChoice.toggleAttribute('hidden', !open);
         document.body.classList.toggle('export-dialog-open', open);
       };
-      document.getElementById('downloadHtml').onclick = () => {
-        if (!window.HTMLReportEditor?.requirePreviewService?.()) return;
-        setHtmlExportChoiceOpen(true);
-      };
+      document.getElementById('downloadHtml').onclick = () => setHtmlExportChoiceOpen(true);
       document.querySelectorAll('[data-html-export-mode]').forEach(button => {
         button.onclick = () => {
-          if (!window.HTMLReportEditor?.requirePreviewService?.()) return;
           setHtmlExportChoiceOpen(false);
           window.HTMLReportEditor?.downloadStandaloneHtml?.(button.dataset.htmlExportMode === 'editable');
         };
