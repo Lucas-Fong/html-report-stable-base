@@ -52,7 +52,7 @@ def test_template_has_json_contract() -> None:
     assert_true('data-ppt-level="h1"' in html, "template must explicitly mark H1 editable boxes")
     assert_true("insertPlainText" in html, "editable paste must strip rich text styles")
     assert_true('[data-ppt-level=\"h1\"] *' in html, "H1 descendants must inherit H1 typography")
-    assert_true('font-size: var(--h4-size)' in html, "subtitle text must use H4 typography")
+    assert_true('.subtitle { margin: -3px 0 0; color: var(--muted); max-width: 1120px; font-size: 16px;' in html, "subtitle text must retain its fixed source typography")
     assert_true('else if (element.matches(\'h4, .subtitle\')) obj.pptLevel = \'h4\'' in html, "DOM sync must classify subtitles as H4")
     assert_true('"name": "overview-subtitle", "x": 56, "y": 140, "w": 1120, "h": 44, "text": "生成报告时优先复用这套底座，保证后续 HTML PPT 的导航、画布、抽屉、编辑体验和导出逻辑一致。", "fontSize": 16, "pptLevel": "h4"' in html, "embedded JSON must mark overview subtitle as H4")
     assert_true('data-pptx-name="metric-1-value" data-ppt-level="metric"' in html, "metric text must use the independent metric level")

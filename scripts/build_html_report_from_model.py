@@ -8,6 +8,7 @@ import json
 import re
 import shutil
 from collections import Counter
+from html import escape
 from pathlib import Path
 
 
@@ -95,10 +96,12 @@ def build_single_page_main(model: dict) -> str:
         title = section.get("title", f"Section {index}")
         section_id = section.get("id", f"section-{index}")
         classes = section.get("class", "report-section")
+        chapter = str(section.get("chapter", "")).strip()
         if "report-section" not in classes.split():
             classes = f"report-section {classes}".strip()
+        chapter_attr = f' data-chapter="{escape(chapter, quote=True)}"' if chapter else ""
         rendered.append(
-            f'    <section class="{classes}" id="{section_id}" data-title="{title}">\n{section["html"].strip()}\n    </section>'
+            f'    <section class="{classes}" id="{section_id}" data-title="{title}"{chapter_attr}>\n{section["html"].strip()}\n    </section>'
         )
     return '  <main class="report" id="report">\n' + "\n\n".join(rendered) + "\n  </main>"
 
@@ -214,6 +217,10 @@ def main() -> int:
     custom_script = model.get("customScript", "").strip()
     if custom_script:
         html = insert_before_last("</body>", f'  <script data-report-script>\n{custom_script}\n  </script>\n', html, "closing body tag")
+
+    post_script = model.get("postScript", "").strip()
+    if post_script:
+        html = insert_before_last("</body>", f'  <script data-report-post-script>\n{post_script}\n  </script>\n', html, "closing body tag")
 
     html = remove_unused_echarts(html, model, mode)
     html = inline_shared_editor(html, args.template)

@@ -1,0 +1,24 @@
+{
+  "mode": "ppt",
+  "title": "默认 PPTX 高保真验收",
+  "requiresEcharts": false,
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei"},
+  "customCss": ".fidelity-slide{min-height:810px!important;height:810px!important;padding:0!important;overflow:hidden!important}.fidelity-object{position:absolute;margin:0}.fidelity-table{position:absolute;border-collapse:collapse;table-layout:fixed}.fidelity-table th{background:#16324F;color:#fff;text-align:center}.fidelity-table td{text-align:center;background:#fff}.fidelity-chart{position:absolute;background:#fff;border:1px solid #D8E2EF}",
+  "slides": [
+    {
+      "title": "默认导出",
+      "class": "slide fidelity-slide",
+      "background": "#FBF7F0",
+      "html": "<h1 class=\"editable fidelity-object\" data-editable-element=\"text\" data-pptx-name=\"quality-title\" data-ppt-level=\"h1\" style=\"left:56px;top:72px;width:760px;height:72px;font-size:48px;line-height:60px;color:#102A43\">默认高保真导出</h1><p class=\"editable fidelity-object\" data-editable-element=\"text\" data-pptx-name=\"quality-copy\" style=\"left:56px;top:156px;width:860px;height:36px;font-size:16px;line-height:24px;color:#486581\">该页不依赖自定义导出脚本，用于验证默认 PPTX 质量。</p><table class=\"fidelity-table\" data-pptx-name=\"quality-table\" style=\"left:56px;top:248px;width:720px;height:180px\"><thead><tr><th>测试对象</th><th>默认结果</th></tr></thead><tbody><tr><td>表格</td><td>原生且居中</td></tr><tr><td>图表</td><td>原生可编辑</td></tr></tbody></table><div class=\"chart fidelity-chart\" data-editable-element=\"chart\" data-pptx-name=\"quality-chart\" data-chart-option=\"{&quot;color&quot;:[&quot;#2878F0&quot;],&quot;xAxis&quot;:{&quot;type&quot;:&quot;category&quot;,&quot;data&quot;:[&quot;A&quot;,&quot;B&quot;,&quot;C&quot;]},&quot;yAxis&quot;:{&quot;type&quot;:&quot;value&quot;},&quot;series&quot;:[{&quot;name&quot;:&quot;测试值&quot;,&quot;type&quot;:&quot;bar&quot;,&quot;data&quot;:[18,42,31]}]}\" style=\"left:850px;top:236px;width:500px;height:300px\"></div><img class=\"fidelity-object\" data-editable-element=\"image\" data-pptx-name=\"quality-image\" alt=\"SVG 兼容图\" src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='96'%3E%3Crect width='160' height='96' fill='%23EAF2FF'/%3E%3Ccircle cx='80' cy='48' r='24' fill='%232878F0'/%3E%3C/svg%3E\" style=\"left:56px;top:488px;width:160px;height:96px\"><div class=\"foot\"><span class=\"fidelity-object\" data-pptx-name=\"quality-footer\" style=\"left:56px;top:764px;font-size:12px\">默认导出验收</span><span class=\"fidelity-object page-number\" data-pptx-name=\"quality-page\" style=\"left:1330px;top:764px;font-size:12px\">01</span></div>",
+      "objects": [
+        {"type":"text","name":"quality-title","frame":{"x":56,"y":72,"w":760,"h":72},"text":"默认高保真导出","pptLevel":"h1"},
+        {"type":"text","name":"quality-copy","frame":{"x":56,"y":156,"w":860,"h":36},"text":"该页不依赖自定义导出脚本，用于验证默认 PPTX 质量。","pptLevel":"body"},
+        {"type":"table","name":"quality-table","frame":{"x":56,"y":248,"w":720,"h":180},"columns":["测试对象","默认结果"],"rows":[["表格","原生且居中"],["图表","原生可编辑"]]},
+        {"type":"chart","name":"quality-chart","frame":{"x":850,"y":236,"w":500,"h":300},"chartType":"echarts"},
+        {"type":"image","name":"quality-image","frame":{"x":56,"y":488,"w":160,"h":96}},
+        {"type":"text","name":"quality-footer","frame":{"x":56,"y":764,"w":240,"h":24},"text":"默认导出验收","pptRole":"footer"},
+        {"type":"text","name":"quality-page","frame":{"x":1330,"y":764,"w":54,"h":24},"text":"01","pptRole":"pageNumber"}
+      ]
+    }
+  ]
+}

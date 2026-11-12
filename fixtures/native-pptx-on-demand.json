@@ -1,0 +1,27 @@
+{
+  "mode": "ppt",
+  "pptxContractVersion": 2,
+  "requiresEcharts": false,
+  "title": "按需原生 PPTX 验收",
+  "meta": {"width": 1440, "height": 810, "fontFamily": "Microsoft YaHei", "typographyStandard": "v1"},
+  "customCss": ".native-slide{min-height:810px!important;height:810px!important;padding:0!important;overflow:hidden!important}.native-object{position:absolute;margin:0}",
+  "slides": [
+    {
+      "title": "原生对象",
+      "class": "slide native-slide",
+      "background": "#F6FBFA",
+      "html": "<div class=\"native-object\" data-editable-element=\"shape\" data-pptx-name=\"native-card\" style=\"left:60px;top:52px;width:1320px;height:680px;background:#FFFFFF\"></div><h1 class=\"editable native-object\" data-editable-element=\"text\" data-pptx-name=\"native-title\" style=\"left:96px;top:96px;width:720px;height:60px\">按需原生 PPTX</h1><p class=\"native-object\" data-pptx-name=\"native-copy\" style=\"left:96px;top:176px;width:720px;height:32px\">仅在导出时构建，可继续编辑。</p><table class=\"native-object\" data-pptx-name=\"native-table\" style=\"left:96px;top:258px;width:520px;height:160px\"><thead><tr><th>对象</th><th>结果</th><th>状态</th></tr></thead><tbody><tr><td>文本</td><td>原生</td><td>可编辑</td></tr><tr><td>图表</td><td>原生</td><td>可编辑</td></tr></tbody></table><div class=\"native-object chart\" data-editable-element=\"chart\" data-pptx-name=\"native-line\" style=\"left:690px;top:250px;width:310px;height:210px\"></div><div class=\"native-object chart\" data-editable-element=\"chart\" data-pptx-name=\"native-pie\" style=\"left:1040px;top:250px;width:260px;height:210px\"></div><div class=\"native-object chart\" data-editable-element=\"chart\" data-pptx-name=\"native-image-chart\" style=\"left:900px;top:516px;width:210px;height:126px\"></div><p class=\"native-object\" data-pptx-name=\"native-footer\" style=\"left:96px;top:760px;width:300px;height:18px\">按需导出验收</p><p class=\"native-object page-number\" data-pptx-name=\"native-page\" style=\"left:1300px;top:760px;width:54px;height:18px\">01</p>",
+      "objects": [
+        {"type":"shape","name":"native-card","frame":{"x":60,"y":52,"w":1320,"h":680},"shape":"roundRect","fill":"#FFFFFF","line":"#DCE9E5","radius":20},
+        {"type":"text","name":"native-title","frame":{"x":96,"y":96,"w":720,"h":60},"text":"按需原生 PPTX","textStyle":{"fontFamily":"Microsoft YaHei","fontSizePt":36,"lineHeightPt":44,"paddingPt":0,"wrap":false,"bold":true,"color":"#173F3B","align":"left"}},
+        {"type":"text","name":"native-copy","frame":{"x":96,"y":176,"w":720,"h":32},"text":"仅在导出时构建，可继续编辑。","textStyle":{"fontFamily":"Microsoft YaHei","fontSizePt":14,"lineHeightPt":20,"paddingPt":0,"wrap":false,"bold":false,"color":"#6C817B","align":"left"}},
+        {"type":"table","name":"native-table","frame":{"x":96,"y":258,"w":520,"h":160},"columns":["对象","结果","状态"],"rows":[["文本","原生","可编辑"],["图表","原生","可编辑"]],"columnWidths":[1,1,1],"rowHeights":[44,58,58],"tableStyle":{"header":{"fontFamily":"Microsoft YaHei","fontSizePt":11,"fill":"#173F3B","color":"#FFFFFF","bold":true},"body":{"fontFamily":"Microsoft YaHei","fontSizePt":11,"fill":"#FFFFFF","color":"#173F3B"},"paddingPt":3,"border":{"color":"#DCE9E5","widthPt":0.5}}},
+        {"type":"chart","name":"native-line","frame":{"x":690,"y":250,"w":310,"h":210},"chartType":"line","categories":["第 1 周","第 2 周","第 3 周"],"series":[{"name":"可见度","type":"line","values":[18,42,64],"color":"#17665D"}],"legend":true},
+        {"type":"chart","name":"native-pie","frame":{"x":1040,"y":250,"w":260,"h":210},"chartType":"pie","categories":["场景","证据","问答"],"series":[{"name":"内容构成","type":"pie","values":[46,31,23],"color":"#D9B768"}],"legend":true},
+        {"type":"chart","name":"native-image-chart","frame":{"x":900,"y":516,"w":210,"h":126},"renderMode":"image","imageSrc":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL5+QAAAABJRU5ErkJggg=="},
+        {"type":"text","name":"native-footer","frame":{"x":96,"y":760,"w":300,"h":18},"text":"按需导出验收","pptRole":"footer","textStyle":{"fontFamily":"Microsoft YaHei","fontSizePt":12,"lineHeightPt":12,"paddingPt":0,"wrap":false,"bold":false,"color":"#6C817B","align":"left"}},
+        {"type":"text","name":"native-page","frame":{"x":1300,"y":760,"w":54,"h":18},"text":"01","pptRole":"pageNumber","textStyle":{"fontFamily":"Microsoft YaHei","fontSizePt":12,"lineHeightPt":12,"paddingPt":0,"wrap":false,"bold":true,"color":"#A47E2B","align":"right"}}
+      ]
+    }
+  ]
+}

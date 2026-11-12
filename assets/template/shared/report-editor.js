@@ -13,6 +13,9 @@
     elementBorderWidth: ['borderWidth', 'px'],
     elementBorderRadius: ['borderRadius', 'px'],
   };
+  const SECTION_NAV_STYLES = ['hidden', 'top', 'embedded-left', 'embedded-right', 'floating-left', 'floating-right', 'dots-left', 'dots-right'];
+  const SECTION_NAV_MODES = ['hidden', 'top', 'embedded', 'floating', 'dots'];
+  const SECTION_NAV_SIDES = ['left', 'right'];
 
   let selectedElement = null;
   let recognitionPickMode = false;
@@ -20,7 +23,6 @@
   let imageCropState = null;
   let documentClickBound = false;
   let sectionNavBound = false;
-  let typographyResizeBound = false;
   const globalDefaults = new Map();
   const MODULE_ICONS = {
     '浏览与模式': '⌘',
@@ -69,7 +71,42 @@
   }
 
   function shortSectionTitle(title) {
-    return Array.from(String(title || '').trim()).slice(0, 6).join('');
+    return Array.from(String(title || '').trim()).slice(0, 5).join('');
+  }
+
+  function currentSectionNavStyle() {
+    const mode = currentSectionNavMode();
+    return mode === 'top' || mode === 'hidden' ? mode : `${mode}-${currentSectionNavSide()}`;
+  }
+
+  function currentSectionNavMode() {
+    if (document.body.classList.contains('section-nav-hidden')) return 'hidden';
+    if (document.body.classList.contains('section-nav-top')) return 'top';
+    return SECTION_NAV_MODES.find(mode => mode !== 'hidden' && mode !== 'top' && document.body.classList.contains(`section-nav-${mode}-left`))
+      || SECTION_NAV_MODES.find(mode => mode !== 'hidden' && mode !== 'top' && document.body.classList.contains(`section-nav-${mode}-right`))
+      || 'top';
+  }
+
+  function currentSectionNavSide() {
+    if (document.body.classList.contains('section-nav-side-right')) return 'right';
+    if (document.body.classList.contains('section-nav-side-left')) return 'left';
+    return SECTION_NAV_STYLES.some(style => style.endsWith('-right') && document.body.classList.contains(`section-nav-${style}`)) ? 'right' : 'left';
+  }
+
+  function isEmbeddedSectionNav(style = currentSectionNavStyle()) {
+    return style === 'embedded-left' || style === 'embedded-right';
+  }
+
+  function setSectionNavCollapsed(collapsed) {
+    if (!isSinglePageMode()) return;
+    const enabled = isEmbeddedSectionNav() && Boolean(collapsed);
+    document.body.classList.toggle('section-nav-collapsed', enabled);
+    const button = document.getElementById('sectionNavCollapse');
+    if (button) {
+      button.setAttribute('aria-expanded', String(!enabled));
+      button.setAttribute('aria-label', enabled ? '展开嵌入导航' : '折叠嵌入导航');
+      button.title = button.getAttribute('aria-label');
+    }
   }
 
   function reportCoverTitle() {
@@ -226,6 +263,22 @@
     });
   }
 
+  function restoreAccordionMarkupForStandalone(root = document) {
+    root.querySelectorAll('.control-group[data-accordion-initialized="true"]').forEach(group => {
+      const toggle = group.querySelector(':scope > .control-group-toggle');
+      const content = group.querySelector(':scope > .control-group-content');
+      if (!toggle || !content) return;
+      const heading = (root.ownerDocument || root).createElement('h4');
+      heading.textContent = toggle.textContent.trim();
+      group.insertBefore(heading, toggle);
+      [...content.childNodes].forEach(node => group.insertBefore(node, content));
+      toggle.remove();
+      content.remove();
+      group.classList.remove('is-open');
+      delete group.dataset.accordionInitialized;
+    });
+  }
+
   function openAccordionGroup(label) {
     const groups = accordionGroups();
     const target = groups.find(group => {
@@ -346,7 +399,6 @@
       if (out) out.textContent = input.value;
     });
     document.body.classList.remove('global-typography-active', 'global-font-active');
-    refreshTypographyLabels();
   }
 
   function scopeForGlobalControlSampling() {
@@ -397,19 +449,8 @@
   }
 
   function refreshGlobalControlsFromComputedTypography() {
-    const samples = {
-      '--h1-size': firstVisibleElement(['[data-ppt-level="h1"]', 'h1']),
-      '--h2-size': firstVisibleElement(['[data-ppt-level="h2"]', 'h2']),
-      '--h3-size': firstVisibleElement(['[data-ppt-level="h3"]', 'h3']),
-      '--h4-size': firstVisibleElement(['[data-ppt-level="h4"]', 'h4', '.subtitle']),
-      '--metric-size': firstVisibleElement(['[data-ppt-level="metric"]', '.metric .value', '.metric strong']),
-      '--body-size': firstVisibleElement(['[data-ppt-level="body"]', 'p', 'li', 'td', 'th', '.body-text']),
-      '--note-size': firstVisibleElement(['[data-ppt-level="note"]', '.note']),
-    };
-    Object.entries(samples).forEach(([globalVar, element]) => {
-      setGlobalInputDisplay(globalVar, computedPxInputValue(element));
-    });
-    setGlobalInputDisplay('--body-line-height', computedLineHeightValue(samples['--body-size']));
+    const bodySample = firstVisibleElement(['[data-ppt-level="body"]', 'p', 'li', 'td', 'th', '.body-text']);
+    setGlobalInputDisplay('--body-line-height', computedLineHeightValue(bodySample));
 
     const tableCell = firstVisibleElement(['td', 'th']);
     if (tableCell) {
@@ -424,7 +465,6 @@
     properties.forEach(property => { selectedElement.style[property] = ''; });
     resizeSelectedChart();
     refreshElementControls();
-    refreshTypographyLabels();
     window.dispatchEvent(new Event('resize'));
   }
 
@@ -455,57 +495,6 @@
     addGroupReset('元素尺寸', '重置元素尺寸', () => resetSelectedStyles(['width', 'height']));
     addGroupReset('文本样式', '重置文本样式', () => resetSelectedStyles(['fontSize', 'color', 'fontWeight', 'textAlign', 'lineHeight']));
     addGroupReset('框体样式', '重置框体样式', () => resetSelectedStyles(['backgroundColor', 'borderColor', 'borderWidth', 'borderRadius']));
-  }
-
-  function typographyLevel(element) {
-    if (!element || !(element instanceof Element)) return '正文';
-    if (element.matches('[data-ppt-level="metric"], .metric .value, .metric strong')) return '指标';
-    if (element.matches('.note, [data-ppt-level="note"]') || element.closest('.note')) return '备注';
-    if (element.matches('h1, [data-ppt-level="h1"]')) return 'L1';
-    if (element.matches('h2, [data-ppt-level="h2"]')) return 'L2';
-    if (element.matches('h3, [data-ppt-level="h3"]')) return 'L3';
-    if (element.matches('h4, [data-ppt-level="h4"]')) return 'L4';
-    return '正文';
-  }
-
-  function typographyTargets() {
-    if (!isSinglePageMode()) return [];
-    return [...document.querySelectorAll('main h1, main h2, main h3, main h4, main p, main li, main td, main th, main .body-text, main .note, main .metric .value, main .metric strong')];
-  }
-
-  function typographyLabelPosition(rect, labelRect, options = {}) {
-    const viewportRight = options.viewportRight ?? window.innerWidth - 8;
-    const scrollX = options.scrollX ?? window.scrollX;
-    const scrollY = options.scrollY ?? window.scrollY;
-    const minLeft = options.minLeft ?? 8;
-    const minTop = options.minTop ?? 8;
-    const gap = options.gap ?? 4;
-    const preferredLeft = rect.right + gap + scrollX;
-    const maxLeft = viewportRight + scrollX - labelRect.width;
-    const left = Math.max(minLeft + scrollX, Math.min(preferredLeft, maxLeft));
-    const preferredTop = rect.top - labelRect.height - gap + scrollY;
-    const fallbackTop = rect.top + gap + scrollY;
-    const top = preferredTop >= minTop + scrollY ? preferredTop : fallbackTop;
-    return { left: Math.round(left), top: Math.round(top) };
-  }
-
-  function refreshTypographyLabels() {
-    if (!isSinglePageMode()) return;
-    document.querySelectorAll('.typography-label').forEach(label => label.remove());
-    if (!editModeEnabled()) return;
-    typographyTargets().forEach(element => {
-      const rect = element.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      const label = document.createElement('span');
-      label.className = 'typography-label';
-      label.textContent = typographyLevel(element);
-      document.body.appendChild(label);
-      const labelRect = label.getBoundingClientRect();
-      const position = typographyLabelPosition(rect, labelRect, { minLeft: 4, minTop: 4 });
-      label.style.left = `${position.left}px`;
-      label.style.top = `${position.top}px`;
-      element.dataset.typographyLabel = label.textContent;
-    });
   }
 
   function rgbToHex(value) {
@@ -582,6 +571,79 @@
     });
   }
 
+  const AUTO_TEXT_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'LI', 'TD', 'TH', 'CAPTION', 'FIGCAPTION', 'BLOCKQUOTE', 'SMALL', 'LABEL', 'DT', 'DD', 'SPAN', 'STRONG', 'EM', 'B', 'I', 'A', 'CODE']);
+  const AUTO_TEXT_CLASS_PATTERN = /(?:^|[-_\s])(title|subtitle|heading|label|caption|note|description|summary|copy|text|content|root-label|category-label)(?:$|[-_\s])/i;
+  const AUTO_SHAPE_CLASS_PATTERN = /(?:^|[-_\s])(card|panel|box|tile|module|widget|container|inner|surface|banner|callout)(?:$|[-_\s])/i;
+  const AUTO_CHART_CLASS_PATTERN = /(?:^|[-_\s])(chart|graph|plot|visualization)(?:$|[-_\s])/i;
+  let recognitionObserver = null;
+
+  function isReportContentElement(element) {
+    if (!(element instanceof Element) || !element.closest('main')) return false;
+    if (element.closest('.style-drawer, .drawer-toggle, .html-export-choice, .preview-export-required, #nav, #sectionNav, script, style, template, svg, .foot, .kicker, .page-number')) return false;
+    return true;
+  }
+
+  function classTokens(element) {
+    return typeof element.className === 'string' ? element.className : '';
+  }
+
+  function hasMeaningfulText(element) {
+    return (element.textContent || '').replace(/\s+/g, ' ').trim().length > 0;
+  }
+
+  function hasDirectText(element) {
+    return [...element.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0);
+  }
+
+  function recognizeReportElement(element) {
+    if (!isReportContentElement(element) || element.dataset.editableElement) return;
+    if (element.parentElement?.closest('[data-editable-element="text"], [data-editable-element="chart"], [data-editable-element="image"]')) return;
+    const classes = classTokens(element);
+    if (element.matches('img')) {
+      element.dataset.editableElement = 'image';
+      return;
+    }
+    if (element.matches('table')) {
+      markTableEditable(element);
+      return;
+    }
+    if (element.matches('th, td') && element.closest('table')) {
+      element.classList.add('editable');
+      if (editModeEnabled()) element.setAttribute('contenteditable', 'true');
+      return;
+    }
+    if (element.matches('.chart, [data-chart-data], [data-chart-option]') || AUTO_CHART_CLASS_PATTERN.test(classes)) {
+      element.classList.add('chart');
+      element.dataset.editableElement = 'chart';
+      return;
+    }
+    if ((element.matches('article, section, aside') || AUTO_SHAPE_CLASS_PATTERN.test(classes)) && !element.matches('main, .slide, .report-section')) {
+      element.dataset.editableElement = 'shape';
+      return;
+    }
+    if (AUTO_TEXT_TAGS.has(element.tagName) || element.matches('[data-ppt-level]') || (AUTO_TEXT_CLASS_PATTERN.test(classes) && hasMeaningfulText(element)) || (hasDirectText(element) && !element.querySelector('h1,h2,h3,h4,h5,h6,p,li,table,.chart,img'))) {
+      markEditableText(element);
+      return;
+    }
+  }
+
+  function recognizeReportElements(root = document.querySelector('main')) {
+    if (!(root instanceof Element)) return;
+    if (isReportContentElement(root)) recognizeReportElement(root);
+    root.querySelectorAll('img, table, .chart, [data-chart-data], [data-chart-option], h1, h2, h3, h4, h5, h6, p, li, td, th, caption, figcaption, blockquote, small, label, dt, dd, span, strong, em, b, i, a, code, div, article, section, aside, [data-ppt-level], [class]').forEach(recognizeReportElement);
+  }
+
+  function observeReportElementRecognition() {
+    if (recognitionObserver || !document.querySelector('main')) return;
+    recognitionObserver = new MutationObserver(records => {
+      records.forEach(record => record.addedNodes.forEach(node => {
+        if (!(node instanceof Element)) return;
+        recognizeReportElements(node);
+      }));
+    });
+    recognitionObserver.observe(document.querySelector('main'), { childList: true, subtree: true });
+  }
+
   function applyRecognitionType(type) {
     if (!editModeEnabled()) {
       recognitionStatus('请先开启编辑模式。', 'error');
@@ -599,7 +661,7 @@
     } else if (type === 'shape') {
       recognized.dataset.editableElement = 'shape';
     } else if (type === 'chart') {
-      recognized = candidate.matches('.chart') ? candidate : candidate.querySelector('.chart') || candidate;
+      recognized = candidate.closest('.chart') || (candidate.matches('.chart') ? candidate : candidate.querySelector('.chart') || candidate);
       recognized.dataset.editableElement = 'chart';
       recognized.classList.add('chart');
     } else if (type === 'image') {
@@ -619,7 +681,6 @@
       window.syncDeckJsonFromDom?.();
       setRecognitionCandidate(null);
       setRecognitionPickMode(false);
-      refreshTypographyLabels();
       setDataEditContext('table');
       openDrawerGroupByIntent('table');
       recognitionStatus('表格单元格已设为可编辑。', 'ok');
@@ -634,7 +695,6 @@
     setRecognitionPickMode(false);
     selectElement(recognized);
     openDrawerGroupByIntent(type === 'chart' ? 'chart' : 'object');
-    refreshTypographyLabels();
     recognitionStatus('元素已补充识别，可继续修改样式或文字。', 'ok');
   }
 
@@ -847,7 +907,6 @@
         const out = document.querySelector(`[data-global-out="${input.dataset.globalVar}"]`);
         if (out) out.textContent = input.value;
         window.dispatchEvent(new Event('resize'));
-        refreshTypographyLabels();
       });
       input.dataset.globalControlInitialized = 'true';
     });
@@ -857,7 +916,6 @@
       if (!editModeEnabled()) return;
       document.documentElement.style.setProperty('--font-family', event.target.value.replace(/\s*\n\s*/g, ' ').trim());
       document.body.classList.add('global-font-active');
-      refreshTypographyLabels();
     };
     fontFamily?.addEventListener('input', applyFontFamily);
     fontFamily?.addEventListener('change', applyFontFamily);
@@ -869,50 +927,88 @@
     const nav = document.getElementById('sectionNav');
     if (!nav) return;
     nav.textContent = '';
+    const panel = document.createElement('div');
+    panel.className = 'section-nav-panel';
+    const collapse = document.createElement('button');
+    collapse.className = 'section-nav-collapse';
+    collapse.id = 'sectionNavCollapse';
+    collapse.type = 'button';
+    collapse.textContent = '‹';
+    collapse.addEventListener('click', () => setSectionNavCollapsed(!document.body.classList.contains('section-nav-collapsed')));
+    panel.appendChild(collapse);
+
     const sections = visibleReportSections();
+    let previousChapter = '';
     sections.forEach((section, index) => {
       if (!section.id) section.id = `section-${index + 1}`;
-      const fullTitle = section.dataset.title || section.id;
-      const link = document.createElement('a');
-      link.href = `#${section.id}`;
-      link.textContent = shortSectionTitle(fullTitle);
-      link.title = fullTitle;
-      link.dataset.sectionNavLabel = link.textContent;
-      link.addEventListener('click', event => {
-        event.preventDefault();
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-      nav.appendChild(link);
+      const chapter = (section.dataset.chapter || `第 ${String(index + 1).padStart(2, '0')} 章`).trim();
+      if (chapter !== previousChapter) {
+        const chapterGroup = document.createElement('div');
+        chapterGroup.className = 'section-nav-chapter';
+        const link = document.createElement('a');
+        link.className = 'section-nav-chapter-link';
+        link.href = `#${section.id}`;
+        link.textContent = shortSectionTitle(chapter);
+        link.title = chapter;
+        link.dataset.sectionNavChapter = chapter;
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        chapterGroup.appendChild(link);
+        panel.appendChild(chapterGroup);
+        previousChapter = chapter;
+      }
     });
+    nav.appendChild(panel);
+    setSectionNavCollapsed(document.body.classList.contains('section-nav-collapsed'));
   }
 
   function setSectionNavStyle(style) {
+    const nextStyle = SECTION_NAV_STYLES.includes(style) ? style : 'top';
+    if (nextStyle === 'hidden' || nextStyle === 'top') {
+      setSectionNavPresentation(nextStyle, currentSectionNavSide());
+      return;
+    }
+    const [mode, side] = nextStyle.split('-');
+    setSectionNavPresentation(mode, side);
+  }
+
+  function setSectionNavPresentation(mode, side) {
     if (!isSinglePageMode()) return;
-    const nextStyle = ['hidden', 'left', 'right'].includes(style) ? style : 'right';
-    document.body.classList.remove('section-nav-hidden', 'section-nav-left', 'section-nav-right');
-    document.body.classList.add(`section-nav-${nextStyle}`);
-    document.querySelectorAll('[data-section-nav-style]').forEach(button => {
-      button.classList.toggle('active', button.dataset.sectionNavStyle === nextStyle);
-      button.setAttribute('aria-pressed', String(button.dataset.sectionNavStyle === nextStyle));
-    });
-    refreshTypographyLabels();
+    const nextMode = SECTION_NAV_MODES.includes(mode) ? mode : 'top';
+    const nextSide = SECTION_NAV_SIDES.includes(side) ? side : 'left';
+    document.body.classList.remove(...SECTION_NAV_STYLES.map(item => `section-nav-${item}`));
+    document.body.classList.remove(...SECTION_NAV_SIDES.map(item => `section-nav-side-${item}`));
+    document.body.classList.add(nextMode === 'top' || nextMode === 'hidden' ? `section-nav-${nextMode}` : `section-nav-${nextMode}-${nextSide}`);
+    document.body.classList.add(`section-nav-side-${nextSide}`);
+    if (nextMode !== 'embedded') setSectionNavCollapsed(false);
+    const modeControl = document.getElementById('sectionNavStyleControl');
+    const sideControl = document.getElementById('sectionNavSideControl');
+    if (modeControl) modeControl.value = nextMode;
+    if (sideControl) sideControl.value = nextSide;
   }
 
   function refreshSectionNavActiveState() {
     if (!isSinglePageMode()) return;
     const current = currentVisibleReportSection();
     if (!current) return;
+    const sectionIndex = visibleReportSections().indexOf(current);
+    const chapter = (current.dataset.chapter || `第 ${String(sectionIndex + 1).padStart(2, '0')} 章`).trim();
     document.querySelectorAll('#sectionNav a').forEach(link => {
-      link.classList.toggle('active', link.getAttribute('href') === `#${current.id}`);
+      link.classList.toggle('active', link.dataset.sectionNavChapter === chapter);
     });
     refreshSinglePageVisibilityControl();
   }
 
   function bindSectionNavControls() {
     if (!isSinglePageMode() || sectionNavBound) return;
-    document.querySelectorAll('[data-section-nav-style]').forEach(button => {
-      button.addEventListener('click', () => setSectionNavStyle(button.dataset.sectionNavStyle));
-    });
+    const applySectionNavControls = () => setSectionNavPresentation(
+      document.getElementById('sectionNavStyleControl')?.value,
+      document.getElementById('sectionNavSideControl')?.value,
+    );
+    document.getElementById('sectionNavStyleControl')?.addEventListener('change', applySectionNavControls);
+    document.getElementById('sectionNavSideControl')?.addEventListener('change', applySectionNavControls);
     document.getElementById('currentPageVisible')?.addEventListener('change', event => {
       setCurrentSinglePageVisibility(event.target.checked);
     });
@@ -920,7 +1016,6 @@
     window.addEventListener('scroll', refreshSectionNavActiveState, { passive: true });
     window.addEventListener('resize', () => {
       refreshSectionNavActiveState();
-      refreshTypographyLabels();
     });
     sectionNavBound = true;
   }
@@ -970,6 +1065,7 @@
       }
       const target = event.target.closest('[data-editable-element]');
       if (target) {
+        if (target.matches('label[for]') && document.getElementById(target.htmlFor)) event.preventDefault();
         selectElement(target);
         return;
       }
@@ -1277,6 +1373,50 @@
     input.dataset.imageReplacementInitialized = 'true';
   }
 
+  function canInlineStandaloneUrl(value) {
+    return Boolean(value) && !/^(?:data:|blob:|#|javascript:|mailto:|tel:)/i.test(value.trim());
+  }
+
+  async function inlineStandaloneUrl(value, baseUrl = document.baseURI) {
+    if (!canInlineStandaloneUrl(value)) return value;
+    try {
+      const resolved = new URL(value, baseUrl).href;
+      const response = await fetch(resolved);
+      if (!response.ok) return value;
+      return await fileToDataUrl(await response.blob());
+    } catch (_error) {
+      return value;
+    }
+  }
+
+  async function inlineStandaloneCssUrls(css, baseUrl) {
+    const references = [];
+    const withPlaceholders = css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (match, _quote, reference) => {
+      const index = references.push({ match, reference: reference.trim() }) - 1;
+      return `__HTML_REPORT_ASSET_${index}__`;
+    });
+    const replacements = await Promise.all(references.map(async ({ match, reference }) => {
+      if (!canInlineStandaloneUrl(reference)) return match;
+      const inlined = await inlineStandaloneUrl(reference, baseUrl);
+      return inlined === reference ? match : `url("${inlined}")`;
+    }));
+    return replacements.reduce((result, replacement, index) => result.replace(`__HTML_REPORT_ASSET_${index}__`, replacement), withPlaceholders);
+  }
+
+  async function inlineStandaloneJsonAssets(value, key = '') {
+    if (Array.isArray(value)) return Promise.all(value.map(item => inlineStandaloneJsonAssets(item)));
+    if (value && typeof value === 'object') {
+      const entries = await Promise.all(Object.entries(value).map(async ([childKey, childValue]) => (
+        [childKey, await inlineStandaloneJsonAssets(childValue, childKey)]
+      )));
+      return Object.fromEntries(entries);
+    }
+    if (typeof value === 'string' && /^(?:src|imageSrc|imageUrl)$/i.test(key)) {
+      return inlineStandaloneUrl(value);
+    }
+    return value;
+  }
+
   async function inlineStandaloneAssets(clone) {
     for (const link of [...clone.querySelectorAll('link[rel="stylesheet"][href]')]) {
       try {
@@ -1284,11 +1424,14 @@
         if (!response.ok) continue;
         const style = clone.ownerDocument.createElement('style');
         style.dataset.inlineAsset = link.getAttribute('href');
-        style.textContent = await response.text();
+        style.textContent = await inlineStandaloneCssUrls(await response.text(), link.href);
         link.replaceWith(style);
       } catch (_error) {
         // Keep the external stylesheet when the browser cannot inline it.
       }
+    }
+    for (const style of [...clone.querySelectorAll('style')]) {
+      style.textContent = await inlineStandaloneCssUrls(style.textContent, document.baseURI);
     }
     for (const script of [...clone.querySelectorAll('script[src]')]) {
       try {
@@ -1303,12 +1446,29 @@
       }
     }
     for (const image of [...clone.querySelectorAll('img[src]')]) {
-      if (/^data:/i.test(image.getAttribute('src') || '')) continue;
+      const original = image.getAttribute('src') || '';
+      const inlined = await inlineStandaloneUrl(image.currentSrc || image.src);
+      if (inlined !== image.currentSrc && inlined !== image.src && inlined !== original) {
+        image.setAttribute('src', inlined);
+        image.removeAttribute('srcset');
+        image.removeAttribute('sizes');
+        image.closest('picture')?.querySelectorAll('source').forEach(source => source.remove());
+      }
+    }
+    for (const image of [...clone.querySelectorAll('svg image[href], svg image[xlink\\:href]')]) {
+      const attribute = image.hasAttribute('href') ? 'href' : 'xlink:href';
+      const original = image.getAttribute(attribute) || '';
+      const inlined = await inlineStandaloneUrl(original);
+      if (inlined !== original) image.setAttribute(attribute, inlined);
+    }
+    for (const element of [...clone.querySelectorAll('[style*="url("]')]) {
+      element.style.cssText = await inlineStandaloneCssUrls(element.style.cssText, document.baseURI);
+    }
+    for (const node of [...clone.querySelectorAll('script[type="application/json"]')]) {
       try {
-        const response = await fetch(image.src);
-        if (response.ok) image.src = await fileToDataUrl(await response.blob());
+        node.textContent = JSON.stringify(await inlineStandaloneJsonAssets(JSON.parse(node.textContent)));
       } catch (_error) {
-        // Keep the original source when the browser cannot read it.
+        // Leave non-JSON or malformed data payloads untouched.
       }
     }
   }
@@ -1338,6 +1498,7 @@
     clone.querySelectorAll('.selected-element, .selected-box, .selected-col').forEach(element => {
       element.classList.remove('selected-element', 'selected-box', 'selected-col');
     });
+    restoreAccordionMarkupForStandalone(clone);
     const body = clone.querySelector('body');
     body?.classList.remove('drawer-open', 'edit-mode', 'preview-export-dialog-open');
     body?.classList.remove('export-dialog-open');
@@ -1362,7 +1523,7 @@
     }
     // Do not introduce an async hop when assets are already inlined: browsers otherwise
     // may no longer treat the save action as initiated by the user's click.
-    if (clone.querySelector('img[src]:not([src^="data:"])')) await inlineStandaloneAssets(clone);
+    await inlineStandaloneAssets(clone);
     triggerStandaloneHtmlDownload(clone.outerHTML, htmlExportFileName());
     return true;
   }
@@ -1377,7 +1538,6 @@
     clone.querySelectorAll('.selected-element, .selected-box, .selected-col').forEach(element => {
       element.classList.remove('selected-element', 'selected-box', 'selected-col');
     });
-    clone.querySelectorAll('.typography-label').forEach(element => element.remove());
     const body = clone.querySelector('body');
     body?.classList.remove('drawer-open', 'edit-mode', 'preview-export-dialog-open');
     body?.classList.add('standalone-export');
@@ -1488,6 +1648,8 @@
 
   function init() {
     initAccordionGroups();
+    recognizeReportElements();
+    observeReportElementRecognition();
     rememberGlobalDefaults();
     initResetButtons();
     bindGlobalControls();
@@ -1502,16 +1664,9 @@
     if (isSinglePageMode()) {
       buildSectionNav();
       bindSectionNavControls();
-      const activeNav = document.body.classList.contains('section-nav-left') ? 'left' : document.body.classList.contains('section-nav-hidden') ? 'hidden' : 'right';
-      setSectionNavStyle(activeNav);
+      setSectionNavStyle(currentSectionNavStyle());
       refreshSectionNavActiveState();
       refreshSinglePageVisibilityControl();
-      if (!typographyResizeBound) {
-        document.addEventListener('input', event => {
-          if (event.target.closest('main')) refreshTypographyLabels();
-        });
-        typographyResizeBound = true;
-      }
       const download = document.getElementById('downloadHtml');
       if (download && !document.getElementById('htmlExportChoice')) download.onclick = downloadStandaloneHtml;
       bindLongExportDownloads();
@@ -1521,12 +1676,14 @@
   window.HTMLReportEditor = {
     init,
     initAccordionGroups,
+    restoreAccordionMarkupForStandalone,
     openAccordionGroup,
     openDrawerGroupByIntent,
     refreshDataGroupAvailability,
     setDataEditContext,
     setRecognitionPickMode,
     applyRecognitionType,
+    recognizeReportElements,
     buildSectionNav,
     setSectionNavStyle,
     setCurrentSinglePageVisibility,
@@ -1534,11 +1691,10 @@
     removeHiddenPagesFromClone,
     getHtmlExportFileName: htmlExportFileName,
     shortSectionTitle,
-    typographyLevel,
-    refreshTypographyLabels,
     selectElement,
     getSelectedElement: () => selectedElement,
     downloadStandaloneHtml,
+    inlineStandaloneAssets,
     exportSnapshotHtml,
     previewServiceAvailable,
     requirePreviewService,
@@ -1549,7 +1705,6 @@
     applyChartDataEditor,
     applyStoredChartOptions,
     replaceSelectedImage,
-    typographyLabelPosition,
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

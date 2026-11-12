@@ -8,13 +8,6 @@
   <style>
     :root {
       --font-family: "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
-      --h1-size: 60px;
-      --h2-size: 34px;
-      --h3-size: 20px;
-      --h4-size: 16px;
-      --metric-size: 30px;
-      --body-size: 14px;
-      --note-size: 12px;
       --body-line-height: 1.55;
       --table-cell-padding-y: 8px;
       --table-cell-padding-x: 10px;
@@ -70,12 +63,39 @@
       scroll-snap-type: y mandatory;
       display: block;
       background: #fff;
+      padding-right: 64px;
+      box-sizing: border-box;
     }
     body.adaptive-mode .slide {
       min-height: 100vh;
       height: auto;
       width: 100%;
       display: flex;
+    }
+    @media (max-width: 820px) {
+      body.adaptive-mode .slide {
+        overflow-x: clip;
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+      body.adaptive-mode .slide > .inner {
+        max-width: 100%;
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+      }
+      body.adaptive-mode .slide * {
+        min-width: 0 !important;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      body.adaptive-mode .slide :is(h1, h2, h3, h4, p, li, th, td, span, b, strong) {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+      }
+      body.adaptive-mode .slide [class*="grid"],
+      body.adaptive-mode .slide [style*="grid-template-columns"] {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)) !important;
+      }
     }
     .slide[data-page-hidden="true"] { display: none !important; }
     body.edit-mode .slide[data-page-hidden="true"].active-slide { display: flex !important; opacity: .48; }
@@ -119,7 +139,7 @@
     h1,
     [data-ppt-level="h1"] {
       margin: 0;
-      font-size: var(--h1-size);
+      font-size: 60px;
       line-height: 1.1;
       letter-spacing: 0;
       font-weight: 800;
@@ -133,11 +153,11 @@
       color: inherit !important;
       letter-spacing: 0 !important;
     }
-    h2 { margin: 0; font-size: var(--h2-size); line-height: 1.2; letter-spacing: 0; }
-    h3 { margin: 0 0 8px; font-size: var(--h3-size); }
-    h4 { margin: 0 0 6px; font-size: var(--h4-size); }
-    p, li, td, th, .body-text { font-size: var(--body-size); line-height: var(--body-line-height); }
-    .note { font-size: var(--note-size); line-height: 1.45; }
+    h2 { margin: 0; font-size: 34px; line-height: 1.2; letter-spacing: 0; }
+    h3 { margin: 0 0 8px; font-size: 20px; }
+    h4 { margin: 0 0 6px; font-size: 16px; }
+    p, li, td, th, .body-text { font-size: 14px; line-height: var(--body-line-height); }
+    .note { font-size: 12px; line-height: 1.45; }
     .kicker { font-size: 12px; line-height: 1.45; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th { background: var(--wine); color: #fff; font-weight: 800; }
@@ -145,7 +165,7 @@
     td { background: rgba(255,255,255,.78); }
     .kicker { color: var(--wine); font-weight: 800; display: flex; align-items: center; gap: 9px; margin-bottom: -4px; }
     .kicker::before { content: ""; width: 12px; height: 12px; border-radius: 3px; background: var(--gold); }
-    .subtitle { margin: -3px 0 0; color: var(--muted); max-width: 1120px; font-size: var(--h4-size); line-height: var(--body-line-height); }
+    .subtitle { margin: -3px 0 0; color: var(--muted); max-width: 1120px; font-size: 16px; line-height: var(--body-line-height); }
     .grid { display: grid; gap: 13px; }
     .cols-2 { grid-template-columns: repeat(2, 1fr); }
     .cols-3 { grid-template-columns: repeat(3, 1fr); }
@@ -153,9 +173,9 @@
     .wide-left { grid-template-columns: 1.12fr .88fr; }
     .panel { border: 1px solid var(--line); background: rgba(255,255,255,.95); border-radius: 8px; padding: 14px; min-width: 0; }
     .metric { min-height: 132px; }
-    .metric .value { color: var(--wine); font-size: var(--metric-size); line-height: 1; font-weight: 900; }
+    .metric .value { color: var(--wine); font-size: 30px; line-height: 1; font-weight: 900; }
     .metric .label,
-    .metric p { font-size: var(--body-size); }
+    .metric p { font-size: 14px; }
     .metric .label { margin-top: 8px; color: var(--muted); line-height: var(--body-line-height); font-weight: 700; }
     .chart { height: 380px; width: 100%; }
     .editable-box {
@@ -177,29 +197,6 @@
     }
     .editable-box.selected-box {
       box-shadow: 0 0 0 3px rgba(49,93,155,.24);
-    }
-    .typography-label-layer {
-      position: fixed;
-      inset: 0;
-      z-index: 25;
-      pointer-events: none;
-    }
-    body:not(.edit-mode) .typography-label-layer { display: none; }
-    .typography-label {
-      position: fixed;
-      min-width: 20px;
-      padding: 1px 5px;
-      border-radius: 6px;
-      background: rgba(255,255,255,.92);
-      color: var(--wine);
-      border: 1px solid rgba(47,111,104,.72);
-      box-shadow: 0 3px 8px rgba(36,27,29,.12);
-      font-family: "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
-      font-size: 10px;
-      line-height: 1.15;
-      font-weight: 800;
-      text-align: center;
-      opacity: .88;
     }
     .foot { margin-top: auto; padding-top: 7px; border-top: 1px solid #eaded4; color: #8b7e78; display: flex; justify-content: space-between; font-size: 12px; line-height: 1.45; }
     .page-number { font-size: 12px; line-height: 1.45; font-weight: 800; }
@@ -245,6 +242,32 @@
     body.standalone-export .drawer-toggle,
     body.standalone-export .style-drawer {
       display: none !important;
+    }
+    .standalone-browse-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 14;
+      display: none;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      padding: 0;
+      border: 1px solid #c9d5e3;
+      border-radius: 50%;
+      background: rgba(255,255,255,.96);
+      color: var(--wine);
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(23,32,51,.12);
+    }
+    .standalone-browse-toggle:hover { background: #edf8f6; border-color: var(--wine); }
+    .standalone-browse-toggle svg { width: 18px; height: 18px; display: block; }
+    body.standalone-export .standalone-browse-toggle { display: grid; }
+    body.standalone-export .nav {
+      top: 62px;
+      max-height: calc(100vh - 76px);
+      overflow-y: auto;
+      transform: none;
     }
     .style-drawer {
       position: fixed;
@@ -416,7 +439,7 @@
     }
     @media print {
       body { overflow: visible; background: #fff; }
-      .nav, .drawer-toggle, .style-drawer { display: none !important; }
+      .nav, .drawer-toggle, .standalone-browse-toggle, .style-drawer { display: none !important; }
       .deck { height: auto; overflow: visible; display: block; }
       .slide { display: flex !important; width: 1440px; height: 810px; min-height: 0; page-break-after: always; break-after: page; }
     }
@@ -425,8 +448,10 @@
 </head>
 <body data-report-mode="ppt" class="ppt-mode nav-numbered">
   <nav class="nav" id="nav"></nav>
-  <div class="typography-label-layer" id="typographyLabelLayer" aria-hidden="true"></div>
   <button class="drawer-toggle" id="drawerToggle" type="button" aria-label="打开样式设置" title="样式设置">⚙</button>
+  <button class="standalone-browse-toggle" id="standaloneBrowseToggle" type="button" aria-label="切换到自适应浏览" title="切换到自适应浏览">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 18v3M7 9h10M7 13h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
 
   <aside class="style-drawer" id="styleDrawer" aria-label="HTML PPT样式设置">
     <div class="drawer-header">
@@ -458,15 +483,8 @@
     </div>
     <div class="control-group" data-drawer-intent="global">
       <h4>全局样式</h4>
-      <p class="drawer-group-help">统一调整整份报告的字体层级、正文行高和表格内边距。</p>
+      <p class="drawer-group-help">统一调整字体、行高和表格内边距；其他文字请选中后单独调整。</p>
       <label class="control-row control-row-textarea"><span>字体</span><textarea class="edit-only" id="fontFamily" rows="3" spellcheck="false">"Microsoft YaHei", "微软雅黑", Arial, sans-serif</textarea><span></span></label>
-      <label class="control-row"><span>L1字号</span><input class="edit-only" data-global-var="--h1-size" type="number" value="60"><span>px</span></label>
-      <label class="control-row"><span>L2字号</span><input class="edit-only" data-global-var="--h2-size" type="number" value="34"><span>px</span></label>
-      <label class="control-row"><span>L3字号</span><input class="edit-only" data-global-var="--h3-size" type="number" value="20"><span>px</span></label>
-      <label class="control-row"><span>L4字号</span><input class="edit-only" data-global-var="--h4-size" type="number" value="16"><span>px</span></label>
-      <label class="control-row"><span>指标字号</span><input class="edit-only" data-global-var="--metric-size" type="number" value="30"><span>px</span></label>
-      <label class="control-row"><span>正文字号</span><input class="edit-only" data-global-var="--body-size" type="number" value="14"><span>px</span></label>
-      <label class="control-row"><span>备注字号</span><input class="edit-only" data-global-var="--note-size" type="number" value="12"><span>px</span></label>
       <label class="control-row"><span>行高</span><input class="edit-only" data-global-var="--body-line-height" data-unit="" type="number" value="1.55" step="0.05"><span></span></label>
       <label class="control-row"><span>表格上下</span><input class="edit-only" data-global-var="--table-cell-padding-y" type="number" value="8"><span>px</span></label>
       <label class="control-row"><span>表格左右</span><input class="edit-only" data-global-var="--table-cell-padding-x" type="number" value="10"><span>px</span></label>
@@ -550,7 +568,7 @@
       <div class="export-actions">
         <button id="downloadHtml">HTML</button>
         <button id="printPdf" data-export-format="pdf">PDF</button>
-        <button id="exportPpt" data-export-format="pptx">PPTX</button>
+        <button id="exportPpt" data-export-format="pptx">原生可编辑 PPTX</button>
       </div>
       <p class="export-preview-hint" data-preview-export-hint>导出独立 HTML、图片、PDF 和 PPTX 前，请通过本地预览服务地址打开报告。</p>
       <div class="drawer-about">
@@ -777,10 +795,9 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     const nav = document.getElementById('nav');
     const modeToggle = document.getElementById('modeToggle');
     const drawer = document.getElementById('styleDrawer');
-    const typographyLabelLayer = document.getElementById('typographyLabelLayer');
     const navStyleButtons = [...document.querySelectorAll('[data-nav-style]')];
     let current = 0;
-    let mode = 'ppt';
+    let mode = document.body.classList.contains('adaptive-mode') ? 'adaptive' : 'ppt';
     let navStyle = 'numbered';
     let editMode = false;
     let selectedBox = null;
@@ -914,7 +931,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       });
       if (mode === 'adaptive') slides[current].scrollIntoView({ behavior: 'smooth', block: 'start' });
       updateStageScale();
-      positionTypographyLabels();
       window.dispatchEvent(new Event('resize'));
     }
     window.goTo = goTo;
@@ -940,7 +956,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
-      positionTypographyLabels();
     }
     window.setNavStyle = setNavStyle;
 
@@ -951,49 +966,11 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       modeToggle.classList.toggle('active', mode === 'ppt');
       modeToggle.textContent = mode === 'ppt' ? 'PPT模式' : '自适应';
       modeToggle.classList.toggle('is-adaptive', mode !== 'ppt');
+      const standaloneBrowseToggle = document.getElementById('standaloneBrowseToggle');
+      const browseLabel = mode === 'ppt' ? '切换到自适应浏览' : '切换到PPT模式';
+      standaloneBrowseToggle?.setAttribute('aria-label', browseLabel);
+      standaloneBrowseToggle?.setAttribute('title', browseLabel);
       goTo(current);
-    }
-
-    function typographyLabelForElement(element) {
-      if (element.matches('[data-ppt-level="metric"], .metric .value, .metric strong')) return '指标';
-      if (element.matches('h1, [data-ppt-level="h1"]')) return 'L1';
-      if (element.matches('h2')) return 'L2';
-      if (element.matches('h3, [data-ppt-level="h3"]')) return 'L3';
-      if (element.matches('h4, .subtitle')) return 'L4';
-      if (element.matches('.note')) return '备注';
-      if (element.matches('p, li, td, th, span, .body-text')) return '正文';
-      return '正文';
-    }
-
-    function updateTypographyLabels() {
-      document.querySelectorAll('.editable').forEach(element => {
-        if (editMode) element.dataset.typographyLabel = typographyLabelForElement(element);
-        else delete element.dataset.typographyLabel;
-      });
-      positionTypographyLabels();
-    }
-
-    function positionTypographyLabels() {
-      typographyLabelLayer.innerHTML = '';
-      if (!editMode) return;
-      const drawerLeft = drawer.classList.contains('open') ? drawer.getBoundingClientRect().left : window.innerWidth;
-      document.querySelectorAll('.editable[data-typography-label]').forEach(element => {
-        if (mode === 'ppt' && !element.closest('.active-slide')) return;
-        const rect = element.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        const label = document.createElement('span');
-        label.className = 'typography-label';
-        label.textContent = element.dataset.typographyLabel;
-        typographyLabelLayer.appendChild(label);
-        const labelRect = label.getBoundingClientRect();
-        const viewportRight = Math.min(drawerLeft, window.innerWidth) - 8;
-        const rightSideLeft = rect.right + 4;
-        const position = window.HTMLReportEditor?.typographyLabelPosition
-          ? window.HTMLReportEditor.typographyLabelPosition(rect, labelRect, { viewportRight, minLeft: 8, minTop: 8 })
-          : { left: rightSideLeft, top: Math.max(8, rect.top - labelRect.height - 4) };
-        label.style.left = `${position.left}px`;
-        label.style.top = `${position.top}px`;
-      });
     }
 
     function setEditMode(enabled) {
@@ -1005,7 +982,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         if (editMode) el.setAttribute('contenteditable', 'true');
         else el.removeAttribute('contenteditable');
       });
-      updateTypographyLabels();
       document.getElementById('editToggle').textContent = editMode ? '保存修改' : '编辑模式';
       document.querySelectorAll('.edit-only').forEach(el => el.disabled = !editMode);
       if (!editMode) {
@@ -1025,7 +1001,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       drawer.classList.toggle('open', open);
       document.body.classList.toggle('drawer-open', open);
       updateStageScale();
-      positionTypographyLabels();
       window.dispatchEvent(new Event('resize'));
     }
 
@@ -1035,6 +1010,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       setDrawerOpen(false);
     };
     modeToggle.onclick = () => setMode(mode === 'ppt' ? 'adaptive' : 'ppt');
+    document.getElementById('standaloneBrowseToggle')?.addEventListener('click', () => setMode(mode === 'ppt' ? 'adaptive' : 'ppt'));
     document.getElementById('editToggle').onclick = () => setEditMode(!editMode);
     navStyleButtons.forEach(button => {
       button.onclick = () => setNavStyle(button.dataset.navStyle);
@@ -1136,7 +1112,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       const percent = Math.max(4, Math.min(90, width / tableWidth * 100));
       const cols = selectedTable.querySelectorAll('col');
       if (cols[selectedColIndex]) cols[selectedColIndex].style.width = `${percent}%`;
-      positionTypographyLabels();
     };
 
     function cleanStandaloneClone(clone, preserveEditing = false) {
@@ -1144,9 +1119,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
       clone.querySelectorAll('.selected-box').forEach(el => el.classList.remove('selected-box'));
       clone.querySelectorAll('.selected-col').forEach(el => el.classList.remove('selected-col'));
-      clone.querySelectorAll('[data-typography-label]').forEach(el => el.removeAttribute('data-typography-label'));
-      const labelLayer = clone.querySelector('#typographyLabelLayer');
-      if (labelLayer) labelLayer.innerHTML = '';
+      window.HTMLReportEditor?.restoreAccordionMarkupForStandalone?.(clone);
       const navClone = clone.querySelector('#nav');
       if (navClone) navClone.innerHTML = '';
       clone.querySelector('#htmlExportChoice')?.setAttribute('hidden', '');
@@ -1224,7 +1197,8 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       // to reject the download as no longer user initiated.
       const clone = document.documentElement.cloneNode(true);
       cleanStandaloneClone(clone, preserveEditing);
-      if (clone.querySelector('script[src]')) await inlineExternalScriptsForStandalone(clone);
+      if (window.HTMLReportEditor?.inlineStandaloneAssets) await window.HTMLReportEditor.inlineStandaloneAssets(clone);
+      else if (clone.querySelector('script[src]')) await inlineExternalScriptsForStandalone(clone);
       triggerStandaloneHtmlDownload(
         clone.outerHTML,
         window.HTMLReportEditor?.getHtmlExportFileName?.() || 'html-report.html'
@@ -1250,6 +1224,19 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       return Number.isFinite(parsed) ? parsed : fallback;
     }
 
+    function hasVisibleFill(value) {
+      const color = String(value || '').trim().toLowerCase();
+      return Boolean(color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)' && color !== 'rgb(0, 0, 0, 0)');
+    }
+
+    function nativeShapeGeometry(style, frame) {
+      const radiusText = String(style.borderTopLeftRadius || '0');
+      const radius = pxNumber(radiusText, 0);
+      if (radiusText.includes('%') && radius >= 45) return 'ellipse';
+      if (frame.w > 0 && frame.h > 0 && radius >= Math.min(frame.w, frame.h) * 0.45) return 'ellipse';
+      return radius > 0 ? 'roundRect' : 'rect';
+    }
+
     function elementRectInSlide(element, slide) {
       const rect = element.getBoundingClientRect();
       const slideRect = slide.getBoundingClientRect();
@@ -1271,17 +1258,31 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       frame.h = rect.h;
       const style = getComputedStyle(element);
       if (obj.type === 'shape') {
-        obj.fill = style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' ? style.backgroundColor : obj.fill;
-        obj.line = pxNumber(style.borderTopWidth, 0) > 0 ? style.borderTopColor : 'none';
-        obj.lineWidth = Math.round(pxNumber(style.borderTopWidth, 0));
-        obj.radius = Math.round(pxNumber(style.borderTopLeftRadius, obj.radius || 0));
+        const panel = element.matches('.panel-shell') ? element.querySelector(':scope > .panel') : null;
+        const fillStyle = panel ? getComputedStyle(panel) : style;
+        obj.fill = hasVisibleFill(fillStyle.backgroundColor) ? fillStyle.backgroundColor : 'none';
+        const borderWidth = pxNumber(style.borderTopWidth, 0);
+        const panelShellBorder = element.matches('.panel-shell') && hasVisibleFill(style.backgroundColor);
+        obj.line = borderWidth > 0 ? style.borderTopColor : (panelShellBorder ? style.backgroundColor : 'none');
+        obj.lineWidth = Math.round(borderWidth || (panelShellBorder ? 2 : 0));
+        obj.shape = nativeShapeGeometry(panel ? getComputedStyle(panel) : style, rect);
+        obj.radius = Math.round(pxNumber((panel ? getComputedStyle(panel) : style).borderTopLeftRadius, obj.radius || 0));
       }
       if (obj.type === 'text') {
         obj.fontSize = Math.round(pxNumber(style.fontSize, obj.fontSize || 14));
+        obj.lineHeight = Math.round(pxNumber(style.lineHeight, obj.fontSize * 1.2));
         obj.fontFamily = style.fontFamily;
         obj.bold = Number(style.fontWeight) >= 700 || style.fontWeight === 'bold';
         obj.color = style.color || obj.color;
         obj.align = style.textAlign || obj.align;
+        obj.fill = hasVisibleFill(style.backgroundColor) ? style.backgroundColor : 'none';
+        const borderWidth = pxNumber(style.borderTopWidth, 0);
+        obj.line = borderWidth > 0 ? style.borderTopColor : 'none';
+        obj.lineWidth = Math.round(borderWidth);
+        obj.shape = nativeShapeGeometry(style, rect);
+        if (style.whiteSpace === 'nowrap') {
+          obj.textStyle = { ...(obj.textStyle || {}), wrap: false };
+        }
         if (element.matches('.kicker')) {
           obj.pptRole = 'header';
           obj.fontSize = 12;
@@ -1352,7 +1353,9 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         '[data-editable-element="chart"]'
       ].join(',');
       const elements = [...slideEl.querySelectorAll(selector)].filter(element => {
-        if (element.closest('table') && !element.matches('table') && !element.dataset.pptxName) return false;
+        // A native PPTX table owns its cell text. Exporting named descendants as
+        // independent text boxes produces duplicate copy over the table.
+        if (element.closest('table') && !element.matches('table')) return false;
         return true;
       });
       const seen = new Set();
@@ -1374,6 +1377,128 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
       });
     }
 
+    function pptxTextAlign(value) {
+      const normalized = String(value || '').toLowerCase();
+      if (normalized === 'center') return 'center';
+      if (normalized === 'right' || normalized === 'end') return 'right';
+      return 'left';
+    }
+
+    function normalizeTextForPptx(obj) {
+      if (obj.type !== 'text') return;
+      const existing = obj.textStyle && typeof obj.textStyle === 'object' ? obj.textStyle : {};
+      const role = obj.pptRole;
+      const fontSizePx = pxNumber(obj.fontSize, 0);
+      const lineHeightPx = pxNumber(obj.lineHeight, fontSizePx ? fontSizePx * 1.2 : 0);
+      const isFixedLine = role === 'footer' || role === 'pageNumber' || role === 'header';
+      const fallbackSize = pxNumber(existing.fontSizePt, 14);
+      const fontSizePt = isFixedLine
+        ? 12
+        : Math.round((fontSizePx > 0 ? fontSizePx * 0.75 : fallbackSize) * 10) / 10;
+      const fallbackLineHeight = fontSizePt * 1.2;
+      const lineHeightPt = isFixedLine
+        ? 15
+        : Math.round((lineHeightPx > 0 ? lineHeightPx * 0.75 : fallbackLineHeight) * 10) / 10;
+      obj.textStyle = {
+        ...existing,
+        fontFamily: obj.fontFamily || existing.fontFamily,
+        fontSizePt,
+        lineHeightPt,
+        bold: typeof obj.bold === 'boolean' ? obj.bold : Boolean(existing.bold),
+        color: obj.color || existing.color,
+        align: pptxTextAlign(obj.align || existing.align),
+        paddingPt: existing.paddingPt || 0,
+        wrap: isFixedLine ? false : existing.wrap !== false
+      };
+    }
+
+    function normalizePptxFrame(obj, meta) {
+      const frame = obj.frame && typeof obj.frame === 'object' ? obj.frame : obj;
+      if (!frame || typeof frame !== 'object') return;
+      const slideWidth = pxNumber(meta.width, 1440);
+      const slideHeight = pxNumber(meta.height, 810);
+      const role = obj.pptRole;
+      if (role === 'footer') {
+        frame.w = Math.min(Math.max(pxNumber(frame.w, 0), 220), Math.max(1, slideWidth - pxNumber(frame.x, 0)));
+        frame.h = Math.max(pxNumber(frame.h, 0), 24);
+        frame.y = Math.min(pxNumber(frame.y, 0), Math.max(0, slideHeight - 46));
+      } else if (role === 'pageNumber') {
+        frame.w = Math.max(pxNumber(frame.w, 0), 54);
+        frame.h = Math.max(pxNumber(frame.h, 0), 24);
+        frame.x = Math.min(pxNumber(frame.x, 0), Math.max(0, slideWidth - frame.w - 16));
+        frame.y = Math.min(pxNumber(frame.y, 0), Math.max(0, slideHeight - 46));
+      }
+    }
+
+    function nativeChartTypeFromSeries(chart) {
+      const types = new Set((chart.series || [])
+        .map(series => String(series.type || chart.chartType || '').toLowerCase())
+        .filter(Boolean));
+      if (!types.size) return null;
+      const supported = [...types].every(type => ['bar', 'column', 'line', 'pie'].includes(type));
+      if (!supported || (types.has('pie') && types.size > 1)) return null;
+      if (types.has('bar') || types.has('column')) return 'bar';
+      if (types.has('line')) return 'line';
+      return types.has('pie') ? 'pie' : null;
+    }
+
+    function seriesValuesForPptx(data) {
+      if (!Array.isArray(data)) return [];
+      return data.map(value => {
+        if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
+        return value;
+      });
+    }
+
+    function mergeEchartsOptionForPptx(obj, option) {
+      if (!option || typeof option !== 'object') return;
+      const xAxes = Array.isArray(option.xAxis) ? option.xAxis : [option.xAxis];
+      const yAxes = Array.isArray(option.yAxis) ? option.yAxis : [option.yAxis];
+      const categoryAxis = [...xAxes, ...yAxes].find(axis => axis && axis.type === 'category' && Array.isArray(axis.data));
+      const optionSeries = Array.isArray(option.series) ? option.series : [];
+      const colors = Array.isArray(option.color) ? option.color : [];
+      const existingSeries = new Map((obj.series || []).map(series => [String(series?.name || ''), series]));
+      const normalizedSeries = optionSeries.map((series, index) => {
+        const name = series?.name || `系列 ${index + 1}`;
+        const optionValues = seriesValuesForPptx(series?.data);
+        const existingValues = seriesValuesForPptx(existingSeries.get(String(name))?.values);
+        return {
+          name,
+          type: series?.type || existingSeries.get(String(name))?.type || '',
+          // Dataset-driven ECharts series keep their values in chartData. The
+          // option deliberately contains no per-series data, so it must not
+          // erase the values collected above.
+          values: optionValues.length ? optionValues : existingValues,
+          ...(series?.itemStyle?.color || colors[index] ? { color: series?.itemStyle?.color || colors[index] } : {})
+        };
+      });
+      if (normalizedSeries.length) obj.series = normalizedSeries;
+      if (categoryAxis) {
+        obj.categories = categoryAxis.data;
+      } else if (!obj.categories?.length && normalizedSeries.length === 1 && String(normalizedSeries[0].type).toLowerCase() === 'pie') {
+        obj.categories = optionSeries[0].data.map(item => (item && typeof item === 'object' ? item.name : '')).filter(Boolean);
+      }
+    }
+
+    function normalizeChartForPptx(obj) {
+      if (obj.type !== 'chart') return;
+      const nativeType = nativeChartTypeFromSeries(obj);
+      if (nativeType) {
+        obj.chartType = nativeType;
+        if (obj.legend === undefined && (obj.series || []).length <= 1) obj.legend = false;
+      }
+    }
+
+    function normalizeDeckForPptxExport(deck) {
+      (deck.slides || []).forEach(slide => {
+        (slide.objects || []).forEach(obj => {
+          normalizeTextForPptx(obj);
+          normalizePptxFrame(obj, deck.meta || {});
+          normalizeChartForPptx(obj);
+        });
+      });
+    }
+
     function syncDeckJsonFromDom() {
       const deck = getPptxDeckData();
       deck.meta = deck.meta || {};
@@ -1383,6 +1508,8 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         const slideEl = slides[slideIndex];
         if (!slideEl || isSlideHidden(slideEl)) return;
         goTo(slideIndex);
+        const slideBackground = getComputedStyle(slideEl).backgroundColor;
+        if (hasVisibleFill(slideBackground)) slideData.background = slideBackground;
         const objectsByName = new Map();
         (slideData.objects || []).forEach(obj => {
           if (obj.name) objectsByName.set(obj.name, obj);
@@ -1409,13 +1536,30 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
             obj.columnWidths = [...element.querySelectorAll('col')].map(col => parseFloat(col.style.width) || 0);
             const headerCell = element.querySelector('th');
             const bodyCell = element.querySelector('td') || headerCell;
-            if (headerCell) obj.headerFill = getComputedStyle(headerCell).backgroundColor;
-            if (bodyCell) obj.bodyFontSize = Math.round(pxNumber(getComputedStyle(bodyCell).fontSize, 14));
-            if (headerCell) obj.headerFontSize = Math.round(pxNumber(getComputedStyle(headerCell).fontSize, 14));
+            const headerStyle = headerCell ? getComputedStyle(headerCell) : null;
+            const bodyStyle = bodyCell ? getComputedStyle(bodyCell) : null;
+            if (headerStyle) obj.headerFill = headerStyle.backgroundColor;
+            if (bodyStyle) obj.bodyFontSize = Math.round(pxNumber(bodyStyle.fontSize, 14));
+            if (headerStyle) obj.headerFontSize = Math.round(pxNumber(headerStyle.fontSize, 14));
+            obj.tableStyle = {
+              header: headerStyle ? {
+                fontFamily: headerStyle.fontFamily,
+                fontSizePt: Math.round(pxNumber(headerStyle.fontSize, 14) * 7.5) / 10,
+                color: headerStyle.color,
+                fill: headerStyle.backgroundColor,
+                bold: Number(headerStyle.fontWeight) >= 700 || headerStyle.fontWeight === 'bold'
+              } : {},
+              body: bodyStyle ? {
+                fontFamily: bodyStyle.fontFamily,
+                fontSizePt: Math.round(pxNumber(bodyStyle.fontSize, 14) * 7.5) / 10,
+                color: bodyStyle.color,
+                fill: bodyStyle.backgroundColor
+              } : {},
+              border: { color: bodyStyle?.borderBottomColor || headerStyle?.borderBottomColor || '#DCE9E5', widthPt: 1 }
+            };
           }
           if (obj.type === 'chart') {
             const chartData = element.dataset.chartData || obj.chartData || '';
-            const nativeChartTypes = ['bar', 'column', 'line', 'pie'];
             if (chartData) {
               try {
                 const parsed = JSON.parse(chartData);
@@ -1430,11 +1574,19 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
                 // ECharts option data may be intentionally opaque; retain it for image fallback.
               }
             }
-            if (!nativeChartTypes.includes(obj.chartType) && obj.renderMode !== 'image' && obj.chartType !== 'image') {
+            const chartOption = element.dataset.chartOption || obj.chartOption || '';
+            if (chartOption) {
+              try {
+                mergeEchartsOptionForPptx(obj, JSON.parse(chartOption));
+              } catch (_) {
+                // Keep the existing chart contract when the option is not JSON.
+              }
+            }
+            if (!nativeChartTypeFromSeries(obj) && obj.renderMode !== 'image' && obj.chartType !== 'image') {
               obj.chartType = 'echarts';
             }
             obj.chartData = chartData;
-            obj.chartOption = element.dataset.chartOption || obj.chartOption || '';
+            obj.chartOption = chartOption;
           }
           if (obj.type === 'image') {
             obj.src = element.getAttribute('src') || '';
@@ -1444,6 +1596,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
         slideData.objects = (slideData.objects || []).filter(obj => !obj.name || presentNames.has(obj.name));
       });
       goTo(original);
+      normalizeDeckForPptxExport(deck);
       writePptxDeckData(deck);
       return deck;
     }
@@ -1489,7 +1642,6 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
     });
     window.addEventListener('resize', () => {
       updateStageScale();
-      positionTypographyLabels();
     });
 
     function renderDemoChart() {
@@ -1517,6 +1669,7 @@ var Fr={},Gr={};var Wr,Hr=function(){function t(t,e,n){var i=this;this._sleepAft
 
     renumberVisiblePageFooters();
     renderNav();
+    setMode(mode);
     goTo(0);
     setNavStyle('numbered');
     setEditMode(false);

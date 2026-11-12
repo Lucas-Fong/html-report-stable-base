@@ -16,13 +16,6 @@ COMMON_TOKENS = [
     'id="editToggle"',
     'id="downloadHtml"',
     "--font-family",
-    "--h1-size",
-    "--h2-size",
-    "--h3-size",
-    "--h4-size",
-    "--metric-size",
-    "--body-size",
-    "--note-size",
     "--body-line-height",
     "--table-cell-padding-y",
     "--table-cell-padding-x",
@@ -49,6 +42,29 @@ COMMON_TOKENS = [
     "© 2026",
     "report-editor.js",
 ]
+
+FORBIDDEN_GLOBAL_HEADING_TOKENS = [
+    *(f"--h{level}-size" for level in range(1, 7)),
+    *(f"L{level}字号" for level in range(1, 7)),
+    'data-global-var="--metric-size"',
+    'data-global-var="--body-size"',
+    'data-global-var="--note-size"',
+    "<span>指标字号</span>",
+    "<span>正文字号</span>",
+    "<span>备注字号</span>",
+    ".typography-label",
+    "typographyLabelForElement",
+]
+
+SINGLE_PAGE_NAV_MODES = (
+    "hidden",
+    "top",
+    "embedded",
+    "floating",
+    "dots",
+)
+
+SINGLE_PAGE_NAV_SIDES = ("left", "right")
 
 
 def fail(message: str) -> None:
@@ -111,6 +127,13 @@ def main() -> int:
         else:
             ok(token)
 
+    for token in FORBIDDEN_GLOBAL_HEADING_TOKENS:
+        if token in html:
+            fail(f"global typography control or badge must be absent: {token}")
+            failed = True
+    if not any(token in html for token in FORBIDDEN_GLOBAL_HEADING_TOKENS):
+        ok("global typography controls and badges are absent")
+
     if "renderer: 'svg'" in html or 'renderer: "svg"' in html:
         fail("ECharts SVG renderer is forced")
         failed = True
@@ -118,6 +141,27 @@ def main() -> int:
         ok("ECharts canvas renderer is not overridden")
 
     if mode == "single-page":
+        navigation_tokens = ('id="sectionNav"', 'id="sectionNavStyleControl"', 'section-nav-top')
+        for token in navigation_tokens:
+            if token not in html:
+                fail(f"single-page navigation is missing {token}")
+                failed = True
+            else:
+                ok(token)
+        for mode_name in SINGLE_PAGE_NAV_MODES:
+            token = f'<option value="{mode_name}"'
+            if token not in html:
+                fail(f"single-page navigation is missing supported mode: {mode_name}")
+                failed = True
+            else:
+                ok(token)
+        for side_name in SINGLE_PAGE_NAV_SIDES:
+            token = f'<option value="{side_name}"'
+            if token not in html:
+                fail(f"single-page navigation is missing supported position: {side_name}")
+                failed = True
+            else:
+                ok(token)
         for token in ('id="downloadLongPng"', 'id="downloadLongPdf"'):
             if token not in html:
                 fail(f"single-page mode is missing {token}")

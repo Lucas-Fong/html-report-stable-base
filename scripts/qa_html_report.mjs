@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -22,7 +23,13 @@ const documentImageBuffer = () => Buffer.from(
   'base64',
 );
 
-const browser = await chromium.launch({ headless: true });
+const chromeCandidates = [
+  process.env.HTML_REPORT_CHROME_PATH,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+].filter(Boolean);
+const executablePath = chromeCandidates.find(candidate => fs.existsSync(candidate));
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
 await page.goto(pathToFileURL(htmlPath).href);
 await page.waitForLoadState('networkidle');
@@ -34,21 +41,24 @@ else fail(`invalid report mode: ${mode}`);
 if (mode === 'single-page') {
   await page.setViewportSize({ width: 1200, height: 1000 });
   await page.waitForTimeout(100);
-  const defaultNavBoundary = await page.evaluate(() => {
+  const defaultSinglePageLayout = await page.evaluate(() => {
     const report = document.getElementById('report').getBoundingClientRect();
     const nav = document.getElementById('sectionNav').getBoundingClientRect();
     return {
-      reportLeft: Math.round(report.left),
-      reportRight: Math.round(report.right),
-      navLeft: Math.round(nav.left),
-      navRight: Math.round(nav.right),
-      navDisplay: getComputedStyle(document.getElementById('sectionNav')).display,
+      reportWidth: Math.round(report.width),
+      viewportWidth: window.innerWidth,
+      navPosition: getComputedStyle(document.getElementById('sectionNav')).position,
+      defaultTop: document.body.classList.contains('section-nav-top'),
     };
   });
-  if (defaultNavBoundary.navDisplay === 'none' || defaultNavBoundary.reportRight <= defaultNavBoundary.navLeft || defaultNavBoundary.navRight <= defaultNavBoundary.reportLeft) {
-    ok('default single-page section navigation does not cover the report');
+  if (
+    Math.abs(defaultSinglePageLayout.reportWidth - defaultSinglePageLayout.viewportWidth) <= 1
+    && defaultSinglePageLayout.navPosition === 'fixed'
+    && defaultSinglePageLayout.defaultTop
+  ) {
+    ok('single-page report is full-width with a fixed top navigation');
   } else {
-    fail(`default single-page section navigation overlaps the report: ${JSON.stringify(defaultNavBoundary)}`);
+    fail(`single-page full-width top navigation failed: ${JSON.stringify(defaultSinglePageLayout)}`);
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.waitForTimeout(100);
@@ -201,26 +211,94 @@ if (mode === 'single-page') {
 }
 
 if (mode === 'single-page') {
-  const navState = await page.evaluate(() => ({
-    navExists: Boolean(document.getElementById('sectionNav')),
-    controlExists: Boolean(document.getElementById('sectionNavStyleControl')),
-    styles: [...document.querySelectorAll('[data-section-nav-style]')].map(button => button.dataset.sectionNavStyle),
-    defaultRight: document.body.classList.contains('section-nav-right'),
-    labels: [...document.querySelectorAll('#sectionNav a')].map(link => ({ text: link.textContent, title: link.title })),
-  }));
-  const hasThreeStyles = ['hidden', 'left', 'right'].every(style => navState.styles.includes(style));
-  const labelsTruncated = navState.labels.length > 0 && navState.labels.every(label => Array.from(label.text).length <= 6 && label.title);
-  if (navState.navExists && navState.controlExists && hasThreeStyles && navState.defaultRight && labelsTruncated) ok('single-page section navigation renders with right default and six-character labels');
+  const navState = await page.evaluate(() => {
+    const firstSection = document.querySelector('.report-section:not([data-page-hidden="true"])');
+    const originalChapter = firstSection?.dataset.chapter;
+    const current = () => ({
+      labels: [...document.querySelectorAll('#sectionNav a')].map(link => ({ text: link.textContent, title: link.title })),
+      chapterLinks: [...document.querySelectorAll('#sectionNav .section-nav-chapter-link')].map(link => link.dataset.sectionNavChapter),
+      sectionLinks: document.querySelectorAll('#sectionNav [data-section-nav-section]').length,
+    });
+    const initial = current();
+    if (firstSection) {
+      firstSection.dataset.chapter = '一二三四五六';
+      window.HTMLReportEditor.buildSectionNav();
+    }
+    const probeLabels = current().labels;
+    if (firstSection) {
+      if (originalChapter === undefined) delete firstSection.dataset.chapter;
+      else firstSection.dataset.chapter = originalChapter;
+      window.HTMLReportEditor.buildSectionNav();
+    }
+    return {
+      navExists: Boolean(document.getElementById('sectionNav')),
+      controlExists: Boolean(document.getElementById('sectionNavStyleControl')),
+      sideControlExists: Boolean(document.getElementById('sectionNavSideControl')),
+      modes: [...document.querySelector('#sectionNavStyleControl').options].map(option => option.value),
+      sides: [...document.querySelector('#sectionNavSideControl').options].map(option => option.value),
+      defaultTop: document.body.classList.contains('section-nav-top'),
+      defaultLeft: document.body.classList.contains('section-nav-side-left'),
+      ...initial,
+      probeLabels,
+    };
+  });
+  const expectedModes = ['hidden', 'top', 'embedded', 'floating', 'dots'];
+  const hasAllModes = expectedModes.every(modeName => navState.modes.includes(modeName));
+  const hasBothSides = ['left', 'right'].every(sideName => navState.sides.includes(sideName));
+  const labelsTruncated = navState.labels.length > 0 && navState.labels.every(label => Array.from(label.text).length <= 5 && label.title);
+  const probeLabelsTruncated = navState.probeLabels.length > 0 && navState.probeLabels.every(label => Array.from(label.text).length <= 5 && label.title);
+  const chaptersAreVisible = navState.chapterLinks.length > 0 && navState.chapterLinks.every(Boolean) && navState.sectionLinks === 0;
+  if (navState.navExists && navState.controlExists && navState.sideControlExists && hasAllModes && hasBothSides && navState.defaultTop && navState.defaultLeft && labelsTruncated && probeLabelsTruncated && chaptersAreVisible) ok('single-page navigation renders chapter-only links with separate mode and position controls');
   else fail(`single-page section navigation failed: ${JSON.stringify(navState)}`);
 
-  await page.click('[data-section-nav-style="left"]');
-  const navLeft = await page.evaluate(() => document.body.classList.contains('section-nav-left') && document.querySelector('[data-section-nav-style="left"]').classList.contains('active'));
-  await page.click('[data-section-nav-style="hidden"]');
+  await page.selectOption('#sectionNavStyleControl', 'top');
+  await page.selectOption('#sectionNavSideControl', 'right');
+  const navTop = await page.evaluate(() => {
+    const nav = document.getElementById('sectionNav');
+    const drawer = document.getElementById('styleDrawer').getBoundingClientRect();
+    return document.body.classList.contains('section-nav-top')
+      && document.querySelector('#sectionNavStyleControl').value === 'top'
+      && document.querySelector('#sectionNavSideControl').value === 'right'
+      && document.body.classList.contains('section-nav-side-right')
+      && getComputedStyle(nav).top === '0px'
+      && getComputedStyle(nav).display !== 'none'
+      && nav.getBoundingClientRect().right <= drawer.left + 1;
+  });
+  await page.selectOption('#sectionNavStyleControl', 'embedded');
+  await page.selectOption('#sectionNavSideControl', 'left');
+  await page.click('#sectionNavCollapse');
+  const navEmbeddedLeft = await page.evaluate(() => document.body.classList.contains('section-nav-embedded-left') && document.body.classList.contains('section-nav-side-left') && document.body.classList.contains('section-nav-collapsed') && document.querySelector('#sectionNavStyleControl').value === 'embedded' && document.querySelector('#sectionNavSideControl').value === 'left');
+  await page.selectOption('#sectionNavStyleControl', 'floating');
+  const navFloatingLeft = await page.evaluate(() => {
+    const nav = document.getElementById('sectionNav').getBoundingClientRect();
+    return document.body.classList.contains('section-nav-floating-left')
+      && document.querySelector('#sectionNavStyleControl').value === 'floating'
+      && document.querySelector('#sectionNavSideControl').value === 'left'
+      && nav.width <= 112;
+  });
+  await page.selectOption('#sectionNavStyleControl', 'dots');
+  await page.selectOption('#sectionNavSideControl', 'right');
+  const navDotsRight = await page.evaluate(() => document.body.classList.contains('section-nav-dots-right') && document.body.classList.contains('section-nav-side-right') && getComputedStyle(document.querySelector('#sectionNav a')).fontSize === '0px');
+  await page.selectOption('#sectionNavStyleControl', 'hidden');
   const navHidden = await page.evaluate(() => document.body.classList.contains('section-nav-hidden') && getComputedStyle(document.getElementById('sectionNav')).display === 'none');
-  await page.click('[data-section-nav-style="right"]');
-  const navRight = await page.evaluate(() => document.body.classList.contains('section-nav-right') && document.querySelector('[data-section-nav-style="right"]').classList.contains('active'));
-  if (navLeft && navHidden && navRight) ok('single-page section navigation switches hidden/left/right modes');
-  else fail(`single-page section navigation mode switching failed: ${JSON.stringify({ navLeft, navHidden, navRight })}`);
+  await page.selectOption('#sectionNavStyleControl', 'embedded');
+  const navEmbeddedRight = await page.evaluate(() => {
+    const nav = document.getElementById('sectionNav').getBoundingClientRect();
+    const report = document.getElementById('report').getBoundingClientRect();
+    const drawer = document.getElementById('styleDrawer').getBoundingClientRect();
+    return document.body.classList.contains('section-nav-embedded-right')
+      && !document.body.classList.contains('section-nav-collapsed')
+      && document.querySelector('#sectionNavStyleControl').value === 'embedded'
+      && document.querySelector('#sectionNavSideControl').value === 'right'
+      && nav.width <= 156
+      && nav.right <= drawer.left + 1
+      && report.right <= nav.left + 1;
+  });
+  if (navTop && navEmbeddedLeft && navFloatingLeft && navDotsRight && navHidden && navEmbeddedRight) ok('single-page navigation switches top, embedded, floating, dots, and hidden modes');
+  else fail(`single-page navigation mode switching failed: ${JSON.stringify({ navTop, navEmbeddedLeft, navFloatingLeft, navDotsRight, navHidden, navEmbeddedRight })}`);
+
+  await page.selectOption('#sectionNavStyleControl', 'top');
+  await page.selectOption('#sectionNavSideControl', 'left');
 }
 
 await page.click('#editToggle');
@@ -244,6 +322,12 @@ const pageVisibility = await page.evaluate(reportMode => {
       navCount: document.querySelectorAll('#sectionNav a').length,
       visibleSectionCount: [...sections].filter(section => section.dataset.pageHidden !== 'true').length,
       exportSectionCount: exported.querySelectorAll('.report-section').length,
+      expectedVisibleSectionCount: sections.length - (sections[1] ? 1 : 0),
+      expectedChapterCount: new Set(
+        sections.flatMap((section, index) => section.dataset.pageHidden === 'true'
+          ? []
+          : [(section.dataset.chapter || `第 ${String(index + 1).padStart(2, '0')} 章`).trim()]),
+      ).size,
     };
   }
   const slides = [...document.querySelectorAll('.slide')];
@@ -275,7 +359,7 @@ const pageVisibility = await page.evaluate(reportMode => {
 if (pageVisibility.missing) {
   fail('current page visibility control is missing');
 } else if (mode === 'single-page') {
-  if (pageVisibility.hidden && pageVisibility.navCount === 1 && pageVisibility.visibleSectionCount === 1 && pageVisibility.exportSectionCount === 1) ok('single-page visibility hides the current section from navigation and export');
+  if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedChapterCount && pageVisibility.visibleSectionCount === pageVisibility.expectedVisibleSectionCount && pageVisibility.exportSectionCount === pageVisibility.expectedVisibleSectionCount) ok('single-page visibility filters empty chapter links and hides the section from export');
   else fail(`single-page visibility failed: ${JSON.stringify(pageVisibility)}`);
 } else if (pageVisibility.hidden && pageVisibility.navCount === pageVisibility.expectedNavCount && pageVisibility.visiblePageNumbers.join(',') === pageVisibility.expectedPageNumbers.join(',') && pageVisibility.exportSlideCount === pageVisibility.expectedNavCount && pageVisibility.exportJsonSlideCount === pageVisibility.expectedNavCount) {
   ok('PPT visibility hides the page, renumbers visible footers, and filters export slides');
@@ -316,7 +400,7 @@ const repeatedInitResult = await page.evaluate(() => {
   window.addEventListener('resize', onResize);
   window.HTMLReportEditor.init();
   window.HTMLReportEditor.init();
-  const input = document.querySelector('[data-global-var="--body-size"]');
+  const input = document.querySelector('[data-global-var="--body-line-height"]');
   input.dispatchEvent(new Event('input', { bubbles: true }));
   window.removeEventListener('resize', onResize);
   return resizeEvents;
@@ -469,52 +553,35 @@ else if (chartResult.height === '333px' && chartResult.resized) ok('chart size u
 else fail(`chart resize failed: ${JSON.stringify(chartResult)}`);
 
 const globalResult = await page.evaluate(() => {
-  const input = document.querySelector('[data-global-var="--body-size"]');
+  const input = document.querySelector('[data-global-var="--body-line-height"]');
   if (!input) return null;
-  input.value = '19';
+  input.value = '1.8';
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  return getComputedStyle(document.documentElement).getPropertyValue('--body-size').trim();
+  return getComputedStyle(document.documentElement).getPropertyValue('--body-line-height').trim();
 });
-if (globalResult === '19px') ok('global typography control updates CSS variables');
+if (globalResult === '1.8') ok('global layout control updates CSS variables');
 else fail(`global typography failed: ${globalResult}`);
 
 const metricResult = await page.evaluate(() => {
-  const input = document.querySelector('[data-global-var="--metric-size"]');
   const value = document.querySelector('.metric .value');
   const label = document.querySelector('.metric .label');
-  if (!input || !value || !label) return { skipped: true };
-  const h3 = document.querySelector('h3:not(.metric h3)');
-  const body = document.querySelector('p:not(.metric p)');
-  const before = {
-    h3: h3 ? getComputedStyle(h3).fontSize : null,
-    body: body ? getComputedStyle(body).fontSize : null,
-    label: getComputedStyle(label).fontSize,
-  };
-  input.value = '40';
-  input.dispatchEvent(new Event('input', { bubbles: true }));
   return {
-    value: getComputedStyle(value).fontSize,
-    label: getComputedStyle(label).fontSize,
-    labelBefore: before.label,
-    valueLevel: value.dataset.typographyLabel,
-    labelLevel: label.dataset.typographyLabel,
-    h3Unchanged: !h3 || getComputedStyle(h3).fontSize === before.h3,
-    bodyUnchanged: !body || getComputedStyle(body).fontSize === before.body,
+    controlsAbsent: ['--metric-size', '--body-size', '--note-size'].every(variable => !document.querySelector(`[data-global-var="${variable}"]`)),
+    valueExists: Boolean(value),
+    labelExists: Boolean(label),
   };
 });
-if (metricResult.skipped) ok('metric typography check skipped: no metric cards');
-else if (metricResult.value === '40px' && metricResult.label === metricResult.labelBefore && (mode !== 'ppt' || (metricResult.valueLevel === '指标' && metricResult.labelLevel === '正文')) && metricResult.h3Unchanged && metricResult.bodyUnchanged) ok('only metric values use the independent metric typography level');
+if (metricResult.controlsAbsent) ok('drawer omits global metric, body, and note font controls');
 else fail(`metric typography failed: ${JSON.stringify(metricResult)}`);
 
+const typographyBadges = await page.evaluate(() => ({
+  badges: document.querySelectorAll('.typography-label').length,
+  labelledElements: document.querySelectorAll('[data-typography-label]').length,
+}));
+if (typographyBadges.badges === 0 && typographyBadges.labelledElements === 0) ok('edit mode omits global typography badges');
+else fail(`typography badges must be absent: ${JSON.stringify(typographyBadges)}`);
+
 if (mode === 'single-page') {
-  const typographyLabels = await page.evaluate(() => {
-    window.HTMLReportEditor.refreshTypographyLabels();
-    return [...document.querySelectorAll('.typography-label')].map(label => label.textContent);
-  });
-  const requiredLevels = ['L1', 'L2', 'L3', 'L4', '指标', '正文', '备注'];
-  const missingLevels = requiredLevels.filter(level => !typographyLabels.includes(level));
-  if (missingLevels.length === 0) ok('single-page edit mode displays all seven typography labels');
-  else fail(`single-page typography labels missing: ${JSON.stringify({ missingLevels, typographyLabels })}`);
 
   const levelIsolation = await page.evaluate(() => {
     document.querySelectorAll('main [data-editable-element="text"]').forEach(element => {
@@ -524,44 +591,15 @@ if (mode === 'single-page') {
     const h2 = document.querySelector('main h2');
     const h3 = document.querySelector('main h3');
     const h4 = document.querySelector('main h4');
-    const body = document.querySelector('main p:not(.note):not(.metric p)');
-    const note = document.querySelector('main .note');
-    const metric = document.querySelector('main .metric .value');
-    const before = {
-      h1: h1 && getComputedStyle(h1).fontSize,
-      h2: h2 && getComputedStyle(h2).fontSize,
-      h3: h3 && getComputedStyle(h3).fontSize,
-      h4: h4 && getComputedStyle(h4).fontSize,
-      body: body && getComputedStyle(body).fontSize,
-      note: note && getComputedStyle(note).fontSize,
-      metric: metric && getComputedStyle(metric).fontSize,
-    };
-    const cases = [
-      ['--h1-size', '41', h1, 'h1'],
-      ['--h2-size', '35', h2, 'h2'],
-      ['--h3-size', '29', h3, 'h3'],
-      ['--h4-size', '23', h4, 'h4'],
-      ['--body-size', '18', body, 'body'],
-      ['--note-size', '15', note, 'note'],
-      ['--metric-size', '37', metric, 'metric'],
-    ];
-    const results = cases.map(([variable, value, element, key]) => {
-      const input = document.querySelector(`[data-global-var="${variable}"]`);
-      if (!input || !element) return { key, skipped: true };
-      input.value = value;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      return { key, size: getComputedStyle(element).fontSize, expected: `${value}px` };
-    });
+    const fontControlsAbsent = ['--body-size', '--note-size', '--metric-size'].every(variable => !document.querySelector(`[data-global-var="${variable}"]`));
     return {
-      results,
-      h2NotH1: h2 && getComputedStyle(h2).fontSize !== '41px',
-      labelStillBody: document.querySelector('.metric .label') && getComputedStyle(document.querySelector('.metric .label')).fontSize === '18px',
-      before,
+      fontControlsAbsent,
+      headingsPresent: [h1, h2, h3, h4].every(Boolean),
+      headingControlAbsent: !document.querySelector('[data-global-var^="--h"]'),
     };
   });
-  const allMatched = levelIsolation.results.every(result => result.skipped || result.size === result.expected);
-  if (allMatched && levelIsolation.h2NotH1 && levelIsolation.labelStillBody) ok('single-page global sliders map to the intended typography levels only');
-  else fail(`single-page typography slider mapping failed: ${JSON.stringify(levelIsolation)}`);
+  if (levelIsolation.fontControlsAbsent && levelIsolation.headingsPresent && levelIsolation.headingControlAbsent) ok('single-page drawer keeps typography levels editable per element only');
+  else fail(`single-page typography control mapping failed: ${JSON.stringify(levelIsolation)}`);
 
   const contract = await page.evaluate(() => ({
     reportSections: document.querySelectorAll('.report-section').length,
@@ -592,6 +630,52 @@ if (mode === 'single-page') {
   }));
   if (renderedSlides.visibleIndexes.length === 1 && renderedSlides.visibleIndexes[0] === renderedSlides.activeIndex) ok('PPT mode renders only the current slide');
   else fail(`PPT active-slide rendering failed: ${JSON.stringify(renderedSlides)}`);
+
+  for (const viewport of [{ width: 1191, height: 655 }, { width: 744, height: 756 }]) {
+    await page.evaluate(() => {
+      if (document.body.classList.contains('drawer-open')) document.getElementById('closeDrawer')?.click();
+    });
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => {
+      if (document.body.classList.contains('ppt-mode')) document.getElementById('modeToggle')?.click();
+    });
+    await page.waitForTimeout(120);
+    const adaptiveOverflow = await page.evaluate(() => {
+      const deck = document.getElementById('deck');
+      const navLeft = document.getElementById('nav').getBoundingClientRect().left;
+      const visibleSlides = [...document.querySelectorAll('.slide')].filter(slide => getComputedStyle(slide).display !== 'none');
+      const responsiveSlides = visibleSlides.filter(slide => !slide.matches('.fidelity-slide, [data-adaptive-fixed-layout="true"]'));
+      const overflowingSlides = responsiveSlides
+        .filter(slide => slide.scrollWidth > slide.clientWidth + 1)
+        .map(slide => ({ title: slide.dataset.title || '', width: slide.clientWidth, contentWidth: slide.scrollWidth }));
+      const navOverlaps = responsiveSlides
+        .filter(slide => slide.getBoundingClientRect().right > navLeft + 1)
+        .map(slide => ({ title: slide.dataset.title || '', slideRight: Math.round(slide.getBoundingClientRect().right) }));
+      return {
+        adaptive: document.body.classList.contains('adaptive-mode'),
+        viewportWidth: window.innerWidth,
+        deckWidth: deck.clientWidth,
+        deckContentWidth: deck.scrollWidth,
+        responsiveSlideCount: responsiveSlides.length,
+        fixedCanvasSlideCount: visibleSlides.length - responsiveSlides.length,
+        overflowingSlides,
+        navLeft: Math.round(navLeft),
+        navOverlaps,
+      };
+    });
+    if (adaptiveOverflow.responsiveSlideCount === 0) {
+      ok(`adaptive overflow reflow check skipped at ${viewport.width}px for explicitly fixed-canvas slides`);
+    } else if (
+      adaptiveOverflow.adaptive
+      && adaptiveOverflow.deckContentWidth <= adaptiveOverflow.deckWidth + 1
+      && adaptiveOverflow.overflowingSlides.length === 0
+      && adaptiveOverflow.navOverlaps.length === 0
+    ) ok(`adaptive browsing has no horizontal overflow at ${viewport.width}px`);
+    else fail(`adaptive browsing overflows at ${viewport.width}px: ${JSON.stringify(adaptiveOverflow)}`);
+    await page.evaluate(() => {
+      if (document.body.classList.contains('adaptive-mode')) document.getElementById('modeToggle')?.click();
+    });
+  }
 }
 
 if (keepScreenshots) await page.screenshot({ path: path.join(path.dirname(htmlPath), `qa-${mode}.png`), fullPage: mode === 'single-page' });

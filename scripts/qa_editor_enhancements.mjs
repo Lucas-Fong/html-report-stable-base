@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -14,7 +15,13 @@ if (!target) {
 const failures = [];
 const ok = message => console.log(`[OK] ${message}`);
 const fail = message => { failures.push(message); console.error(`[FAIL] ${message}`); };
-const browser = await chromium.launch({ headless: true });
+const chromeCandidates = [
+  process.env.HTML_REPORT_CHROME_PATH,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+].filter(Boolean);
+const executablePath = chromeCandidates.find(candidate => fs.existsSync(candidate));
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 const page = await browser.newPage({ viewport: { width: 1466, height: 900 } });
 page.on('dialog', dialog => dialog.accept());
 await page.goto(pathToFileURL(path.resolve(target)).href);
@@ -41,7 +48,8 @@ const basics = await page.evaluate(() => {
     repairOutsideCommon: Boolean(repairToggle) && !labels.includes(repairToggle),
     repairIcon: repairToggle?.dataset.moduleIcon,
     repairColor: repairStyle?.borderLeftColor || repairStyle?.borderTopColor,
-    lLabels: [...document.querySelectorAll('.control-row > span:first-child')].map(node => node.textContent).filter(text => /^L[1-4]字号$/.test(text)),
+    headingSizeLabels: [...document.querySelectorAll('.control-row > span:first-child')].map(node => node.textContent).filter(text => /^L[1-6]字号$/.test(text)),
+    headingSizeControls: [...document.querySelectorAll('[data-global-var^="--h"]')].map(input => input.dataset.globalVar),
     globalTypographyInputs: [...document.querySelectorAll('[data-global-var]')].map(input => ({ type: input.type, min: input.min, max: input.max })),
     reset: Boolean(document.querySelector('.group-reset-btn')),
     deleteControl: Boolean(document.getElementById('deleteSelectedElement')),
@@ -52,7 +60,8 @@ else fail(`edit toggle state failed: ${JSON.stringify(basics)}`);
 if (basics.icons) ok('all drawer modules include an icon'); else fail('drawer module icon is missing');
 if (basics.repairOutsideCommon && basics.repairIcon && !basics.commonLabels.includes('修复识别')) ok('repair recognition is fixed outside common drawer groups');
 else fail(`repair recognition placement failed: ${JSON.stringify(basics)}`);
-if (basics.lLabels.length === 4) ok('global typography uses L1-L4 labels'); else fail(`L-level labels missing: ${JSON.stringify(basics.lLabels)}`);
+if (!basics.headingSizeLabels.length && !basics.headingSizeControls.length) ok('global styling does not expose unified heading-size controls');
+else fail(`global heading-size controls must be absent: ${JSON.stringify(basics)}`);
 if (basics.globalTypographyInputs.every(input => input.type === 'number' && !input.min && !input.max)) ok('global typography uses unconstrained numeric inputs');
 else fail(`global typography inputs must be numeric fields: ${JSON.stringify(basics.globalTypographyInputs)}`);
 if (basics.reset && basics.deleteControl) ok('reset and delete controls are available'); else fail(`editor commands missing: ${JSON.stringify(basics)}`);
@@ -71,16 +80,22 @@ const selectStyle = await page.evaluate(() => {
 if (!selectStyle.missing && selectStyle.appearance === 'none' && selectStyle.height >= 34 && selectStyle.paddingRight >= 28 && selectStyle.borderRadius >= 6) ok('drawer select controls use styled dropdown appearance');
 else fail(`drawer select style failed: ${JSON.stringify(selectStyle)}`);
 
-const computedTypography = await page.evaluate(() => {
-  const input = document.querySelector('[data-global-var="--h1-size"]');
+const headingTypography = await page.evaluate(() => {
+  const input = document.querySelector('[data-global-var="--body-line-height"]');
   const levelOne = document.querySelector('[data-ppt-level="h1"], main h1, h1');
+  const before = levelOne ? Math.round(parseFloat(getComputedStyle(levelOne).fontSize)) : null;
+  input.value = String(Number(input.value) + 1);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const after = levelOne ? Math.round(parseFloat(getComputedStyle(levelOne).fontSize)) : null;
+  document.querySelector('[data-drawer-intent="global"] .group-reset-btn')?.click();
   return {
-    inputValue: input?.value,
-    computed: levelOne ? Math.round(parseFloat(getComputedStyle(levelOne).fontSize)) : null,
+    headingControl: document.querySelector('[data-global-var^="--h"]')?.dataset.globalVar || null,
+    before,
+    after,
   };
 });
-if (computedTypography.inputValue === String(computedTypography.computed)) ok('global typography inputs start from computed page font sizes');
-else fail(`global typography input did not reflect computed size: ${JSON.stringify(computedTypography)}`);
+if (!headingTypography.headingControl && headingTypography.before === headingTypography.after) ok('body typography changes do not unify heading sizes');
+else fail(`heading typography must remain per-element: ${JSON.stringify(headingTypography)}`);
 
 const fontFamilyControl = await page.evaluate(() => {
   const input = document.getElementById('fontFamily');
@@ -96,32 +111,12 @@ const fontFamilyControl = await page.evaluate(() => {
 if (fontFamilyControl.tagName === 'textarea' && Number(fontFamilyControl.rows) >= 3 && fontFamilyControl.cssValue === '"Arial", "Microsoft YaHei", sans-serif') ok('global font family control supports multiline editing');
 else fail(`font family multiline control failed: ${JSON.stringify(fontFamilyControl)}`);
 
-const typographyLabelPlacement = await page.evaluate(() => {
-  const target = [...document.querySelectorAll('.editable[data-typography-label], main [data-typography-label]')]
-    .find(element => {
-      const rect = element.getBoundingClientRect();
-      return rect.width > 80 && rect.height > 12;
-    });
-  if (!target) return { skipped: true };
-  const rect = target.getBoundingClientRect();
-  const labels = [...document.querySelectorAll('.typography-label')];
-  const label = labels
-    .filter(candidate => candidate.textContent === target.dataset.typographyLabel)
-    .map(candidate => ({ element: candidate, rect: candidate.getBoundingClientRect() }))
-    .sort((a, b) => Math.abs(a.rect.top - rect.top) - Math.abs(b.rect.top - rect.top))[0];
-  if (!label) return { missing: true, target: target.dataset.typographyLabel };
-  return {
-    targetTop: Math.round(rect.top),
-    targetRight: Math.round(rect.right),
-    labelTop: Math.round(label.rect.top),
-    labelLeft: Math.round(label.rect.left),
-    labelWidth: Math.round(label.rect.width),
-    labelBottom: Math.round(label.rect.bottom),
-  };
-});
-if (typographyLabelPlacement.skipped) ok('typography label placement skipped: no labelled target');
-else if (!typographyLabelPlacement.missing && typographyLabelPlacement.labelBottom <= typographyLabelPlacement.targetTop + 1 && typographyLabelPlacement.labelLeft >= typographyLabelPlacement.targetRight - Math.max(26, typographyLabelPlacement.labelWidth + 64)) ok('typography labels sit outside the top-right of their element');
-else fail(`typography label placement failed: ${JSON.stringify(typographyLabelPlacement)}`);
+const typographyBadgeState = await page.evaluate(() => ({
+  badges: document.querySelectorAll('.typography-label').length,
+  labelledElements: document.querySelectorAll('[data-typography-label]').length,
+}));
+if (typographyBadgeState.badges === 0 && typographyBadgeState.labelledElements === 0) ok('edit mode omits global typography badges in every report mode');
+else fail(`typography badges must be absent: ${JSON.stringify(typographyBadgeState)}`);
 
 const closeSaves = await page.evaluate(() => {
   const text = document.querySelector('[contenteditable="true"]');
@@ -165,6 +160,89 @@ const hexColor = await page.evaluate(() => {
 if (hexColor.skipped) ok('HEX color input skipped: no text element');
 else if (hexColor.color === 'rgb(255, 255, 255)' && hexColor.value === '#FFFFFF' && hexColor.objectOpen && hexColor.tableDisabled && hexColor.chartDisabled && hexColor.tableUnavailable && hexColor.chartUnavailable) ok('HEX color input applies pasted colors, opens object editing, and disables table/chart editing for text');
 else fail(`HEX color input failed: ${JSON.stringify(hexColor)}`);
+
+const automaticRecognition = await page.evaluate(async reportMode => {
+  const host = reportMode === 'ppt' ? document.querySelector('.slide.active-slide') : document.getElementById('report');
+  const card = document.createElement('section');
+  card.className = 'card reputation-note-card';
+  const label = document.createElement('div');
+  label.className = 'root-label category-label';
+  label.textContent = '词根类型：8 类已确认';
+  const list = document.createElement('ul');
+  const item = document.createElement('li');
+  item.textContent = '同价位价值感';
+  list.appendChild(item);
+  const image = document.createElement('img');
+  image.alt = '自动识别图片';
+  image.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"%3E%3C/svg%3E';
+  const chart = document.createElement('div');
+  chart.className = 'chart';
+  const table = document.createElement('table');
+  table.innerHTML = '<tbody><tr><td>自动识别表格</td></tr></tbody>';
+  card.append(label, list, image, chart, table);
+  host.appendChild(card);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  label.click();
+  return {
+    card: card.dataset.editableElement,
+    label: label.dataset.editableElement,
+    item: item.dataset.editableElement,
+    image: image.dataset.editableElement,
+    chart: chart.dataset.editableElement,
+    cellEditable: table.querySelector('td').classList.contains('editable'),
+    selected: window.HTMLReportEditor.getSelectedElement() === label,
+  };
+}, mode);
+if (
+  automaticRecognition.card === 'shape' &&
+  automaticRecognition.label === 'text' &&
+  automaticRecognition.item === 'text' &&
+  automaticRecognition.image === 'image' &&
+  automaticRecognition.chart === 'chart' &&
+  automaticRecognition.cellEditable &&
+  automaticRecognition.selected
+) ok('automatic recognition covers semantic text, cards, images, charts, and tables');
+else fail(`automatic recognition failed: ${JSON.stringify(automaticRecognition)}`);
+
+const associatedLabelEditing = await page.evaluate(async reportMode => {
+  const host = reportMode === 'ppt' ? document.querySelector('.slide.active-slide') : document.getElementById('report');
+  const form = document.createElement('div');
+  const input = document.createElement('textarea');
+  input.id = 'qa-associated-canvas-field';
+  input.dataset.canvasField = '测试画布字段';
+  input.value = '测试输入内容';
+  const label = document.createElement('label');
+  label.htmlFor = input.id;
+  label.textContent = '测试画布标题';
+  form.append(label, input);
+  host.appendChild(form);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  window.HTMLReportEditor.selectElement(null);
+  label.click();
+  const editing = {
+    labelType: label.dataset.editableElement,
+    selected: window.HTMLReportEditor.getSelectedElement() === label,
+    objectOpen: document.querySelector('[data-drawer-intent="object"] > .control-group-toggle')?.getAttribute('aria-expanded') === 'true',
+  };
+
+  document.getElementById('editToggle')?.click();
+  input.blur();
+  label.click();
+  const browsing = { inputFocused: document.activeElement === input };
+  document.getElementById('editToggle')?.click();
+  window.HTMLReportEditor.selectElement(null);
+  form.remove();
+  return { editing, browsing };
+}, mode);
+if (
+  associatedLabelEditing.editing.labelType === 'text' &&
+  associatedLabelEditing.editing.selected &&
+  associatedLabelEditing.editing.objectOpen
+) ok('editing a form label selects it without following its associated field');
+else fail(`editable form label selection failed: ${JSON.stringify(associatedLabelEditing)}`);
+if (associatedLabelEditing.browsing.inputFocused) ok('form label retains its associated-field behavior outside edit mode');
+else fail(`form label default behavior changed outside edit mode: ${JSON.stringify(associatedLabelEditing)}`);
 
 const recognition = await page.evaluate(reportMode => {
   const host = reportMode === 'ppt' ? document.querySelector('.slide.active-slide') : document.getElementById('report');
@@ -249,7 +327,7 @@ if (mode === 'ppt') {
 }
 
 const typography = await page.evaluate(() => {
-  const input = document.querySelector('[data-global-var="--body-size"]');
+  const input = document.querySelector('[data-global-var="--body-line-height"]');
   const before = document.body.classList.contains('global-typography-active');
   input.value = String(Number(input.value) + 1);
   input.dispatchEvent(new Event('input', { bubbles: true }));

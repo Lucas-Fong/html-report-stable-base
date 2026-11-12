@@ -69,6 +69,15 @@ function run(command, args) {
   });
 }
 
+function nativePptxRuntime() {
+  const required = ['RUNTIME_NODE', 'RUNTIME_NODE_MODULES', 'RUNTIME_BIN_DIR'];
+  const missing = required.filter(name => !process.env[name] || !existsSync(process.env[name]));
+  if (missing.length) {
+    throw new Error(`原生可编辑 PPTX 导出需要 Codex 运行时：${missing.join('、')}。请先通过 load_workspace_dependencies 配置运行时后再启动预览服务。`);
+  }
+  return process.env.RUNTIME_NODE;
+}
+
 function bytesFromBinary(binary) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i) & 255;
@@ -258,8 +267,9 @@ function extractPptxData(snapshotPath, jsonPath) {
   const html = readFileSync(snapshotPath, 'utf8');
   const match = html.match(/<script[^>]+id=["']html-pptx-data["'][^>]*>([\s\S]*?)<\/script>/i);
   if (!match) throw new Error('当前页面缺少 html-pptx-data。');
-  JSON.parse(match[1].trim());
-  writeFileSync(jsonPath, match[1].trim(), 'utf8');
+  const deck = JSON.parse(match[1].trim());
+  writeFileSync(jsonPath, JSON.stringify(deck), 'utf8');
+  return deck;
 }
 
 async function createExport(payload) {
@@ -286,8 +296,21 @@ async function createExport(payload) {
       }
       const script = path.join(skillRoot, 'scripts', 'export_html_report.py');
       const deckJsonPath = path.join(root, `.html-report-export-${token}.json`);
-      extractPptxData(snapshotPath, deckJsonPath);
+      const deck = extractPptxData(snapshotPath, deckJsonPath);
       try {
+        if (deck.pptxContractVersion === 2) {
+          const nativeOutput = path.join(root, `.html-report-native-${token}.pptx`);
+          const nativeExporter = path.join(skillRoot, 'scripts', 'export_native_pptx.mjs');
+          try {
+            await run(nativePptxRuntime(), [nativeExporter, deckJsonPath, nativeOutput, root]);
+            if (!existsSync(nativeOutput)) throw new Error('原生 PPTX 导出器未返回文件。');
+            const finalName = `${prefix}-${Date.now()}.pptx`;
+            writeFileSync(path.join(exportDir, finalName), readFileSync(nativeOutput));
+            return finalName;
+          } finally {
+            if (existsSync(nativeOutput)) unlinkSync(nativeOutput);
+          }
+        }
         await run('python3', [script, snapshotPath, '--out-dir', exportDir, '--formats', format, '--deck-json', deckJsonPath]);
       } finally {
         if (existsSync(deckJsonPath)) unlinkSync(deckJsonPath);

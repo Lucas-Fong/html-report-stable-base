@@ -24,19 +24,16 @@
 Bind global controls through `data-global-var="--variable"` and optional `data-unit`. Output labels use `data-global-out`. Both templates support:
 
 - `--font-family`
-- `--h1-size`, `--h2-size`, `--h3-size`, `--h4-size`
-- `--metric-size` for metric values only; labels and descriptions inside `.metric` cards use `--body-size`
-- `--body-size`, `--note-size`
 - `--body-line-height`
 - `--table-cell-padding-y`, `--table-cell-padding-x`
+
+Neither mode renders global metric/body/note font-size controls. Text size is changed only through the selected element’s font-size control.
 
 Drawer CSS must use fixed UI sizes and must not inherit report typography variables.
 
 The `#fontFamily` control is a multiline textarea, not a single-line input, so long font fallback stacks can be edited comfortably.
 
-Edit-mode typography badges (`.typography-label`) sit just outside the target element's top-right corner. Keep them out of the content box whenever there is room; when constrained by the viewport or drawer, clamp them horizontally while keeping the vertical position above the element.
-
-The displayed labels are L1/L2/L3/L4, not H1/H2/H3/H4. Use unbounded `type="number"` fields for global size, line-height, and table padding controls; do not use range sliders. Before opening the drawer or entering edit mode, refresh these inputs from the page's computed styles for the current report context: L1/L2/L3/L4/指标/正文/备注 use the first visible matching content element, body line-height uses the matching body sample's computed line-height, and table padding uses the first visible table cell. Updating the inputs must not write CSS variables or change the page until the user edits a value. Global changes opt into `body.global-typography-active` so adapted reports preserve their source layout until a user adjusts a global control; the reset command removes those opt-in overrides and returns the input values to their initial computed defaults.
+Neither mode renders typography badges (`.typography-label`) or corner labels. Use unbounded `type="number"` fields for the available global layout controls; do not use range sliders. Before opening the drawer or entering edit mode, refresh body line-height from a visible body sample and table padding from the first visible table cell. Updating the inputs must not write CSS variables or change the page until the user edits a value. Global changes opt into `body.global-typography-active` so adapted reports preserve their source layout until a user adjusts a global control; the reset command removes those opt-in overrides and returns the input values to their initial computed defaults. Titles retain their source size unless the selected element’s font-size control changes it.
 
 ## Element Selection
 
@@ -67,12 +64,12 @@ The `元素独立样式` group must include `.element-empty-state`, `.element-se
 
 ## Manual Recognition
 
-Manual recognition is a fallback for important content missed during generation. It works in both `single-page` and `ppt` modes:
+The editor automatically recognizes report content at initialization and after DOM insertion: standard/semantic text, leaf text containers, card/panel-like shapes, real images, chart containers, and real table cells. Manual recognition is a fallback for important ambiguous content. It works in both `single-page` and `ppt` modes:
 
 - `选择页面元素` enters a page-pick mode in edit mode; the next clicked report element becomes the recognition candidate.
 - `文本` adds `.editable` and `data-editable-element="text"` and immediately enables `contenteditable` while edit mode is active.
 - `矩形` adds `data-editable-element="shape"`.
-- `图表` adds `data-editable-element="chart"` to the clicked `.chart`, a descendant `.chart`, or the candidate itself.
+- `图表` adds `data-editable-element="chart"` to the nearest containing `.chart`, otherwise to a descendant `.chart`, or finally to the candidate itself. This keeps canvas clicks attached to their ECharts container.
 - `图片` only applies to a real `<img>` or a descendant `<img>`.
 - `表格` only applies to a real `<table>` or containing table; it adds `.editable` to `th`/`td` cells. It does not create a `data-editable-element="table"` type.
 - In PPT mode, every successful recognition calls `syncDeckJsonFromDom()` so new recognized content receives a `data-pptx-name` and is preserved for export.
@@ -81,24 +78,28 @@ Manual recognition is a fallback for important content missed during generation.
 
 Only `.editable` content receives `contenteditable="true"` in edit mode. Remove it when edit mode closes and before standalone export. Paste plain text rather than rich clipboard styles.
 
-In `single-page` mode, edit mode also displays typography labels for H1/H2/H3/H4/指标/正文/备注. Metric labels and metric descriptions must classify as 正文; only `.metric .value`, `.metric strong`, or `[data-ppt-level="metric"]` classify as 指标.
+When an editable `<label for="…">` is selected in edit mode, prevent its default forwarding to the associated form field so the label remains selected and opens `对象编辑`. Outside edit mode, preserve the label's native behavior of focusing its associated field.
 
-PPT fixed furniture such as headers, footers, and page numbers must not use `.editable`, `data-editable-element`, resize handles, or typography labels.
+In both modes, edit mode displays no typography labels or corner badges. Metric labels and metric descriptions remain body text; only `.metric .value`, `.metric strong`, or `[data-ppt-level="metric"]` use metric source styles.
+
+PPT fixed furniture such as headers, footers, and page numbers must not use `.editable`, `data-editable-element`, or resize handles.
 
 ## Mode Differences
 
-`single-page` uses `<main class="report" id="report">` and `.report-section[data-title]`. It has a section navigation component `#sectionNav` with drawer controls in `#sectionNavStyleControl`. The allowed styles are exactly `hidden`, `left`, and `right`, with `right` as the default. Each nav item uses the section title truncated to at most six Unicode characters and keeps the full title in the link `title` attribute. A hidden section has `data-page-hidden="true"`, is absent from `#sectionNav` and export snapshots, and can be restored through `#restoreHiddenPages`. It has no PPT slide navigation, mode toggle, PDF/PPTX controls, or PPTX JSON.
+`single-page` uses a full-width `<main class="report" id="report">` and `.report-section[data-title]`. Sections may carry optional `data-chapter`; the navigation renders one ordinary first-level link for each adjacent chapter, otherwise falling back to numbered chapters. It has a section navigation component `#sectionNav` with separate `#sectionNavStyleControl` and `#sectionNavSideControl` selectors in the drawer. The allowed modes are `hidden`, `top`, `embedded`, `floating`, and `dots`, each with a `left` or `right` position; default is top-left. Top mode is fixed to the page top and aligns its links to the chosen side. Embedded modes reserve a left/right report column, avoid the open right-side drawer, and expose `#sectionNavCollapse`; their default width is `156px` (`40px` collapsed). Floating modes may overlap report content but use a restrained `112px` width. Dots modes show no title text and use `18px` targets. Text nav items use the chapter title truncated to at most five Unicode characters and keep the full chapter title in the link `title` attribute. A hidden section has `data-page-hidden="true"`, is absent from `#sectionNav` and export snapshots, and can be restored through `#restoreHiddenPages`. It has no PPT slide navigation, mode toggle, PDF/PPTX controls, or PPTX JSON.
 
-`ppt` uses `<main class="deck" id="deck">`, `.slide`, `#nav`, and `#modeToggle`. It retains table column controls, stage scaling, typography badges, `html-pptx-data`, and PPTX export. A hidden slide has `data-page-hidden="true"`; it is omitted from normal `#nav`, HTML/PNG/PDF/PPTX snapshot data, and cloned `html-pptx-data`. Recalculate visible `.page-number` footer text as `01`, `02`, … after every visibility change. Authors may reach a hidden active slide only in edit mode to restore it.
+`ppt` uses `<main class="deck" id="deck">`, `.slide`, `#nav`, and `#modeToggle`. It retains table column controls, stage scaling, `html-pptx-data`, and PPTX export, but no typography badges. Adaptive mode must reflow narrow viewports, wrap long text, and reserve space for the right-side navigation; verify at `744 × 756` that no slide overflows horizontally or sits under the nav rail. A hidden slide has `data-page-hidden="true"`; it is omitted from normal `#nav`, HTML/PNG/PDF/PPTX snapshot data, and cloned `html-pptx-data`. Recalculate visible `.page-number` footer text as `01`, `02`, … after every visibility change. Authors may reach a hidden active slide only in edit mode to restore it.
 
 ## Standalone Export
 
 Clone the current DOM after edits, then:
 
 - remove `contenteditable` and transient selection classes;
-- close and hide the drawer and gear;
-- remove `drawer-open` and `edit-mode`, then add `standalone-export`;
-- inline local stylesheets, scripts, images, and data;
+- remove `drawer-open` and `edit-mode`;
+- for editable HTML, close the drawer but preserve the gear, drawer, edit toggle, and PPT/adaptive mode control; do not add `standalone-export`;
+- for view-only HTML, add `standalone-export`, hide the gear and drawer, and preserve `#nav` plus `#standaloneBrowseToggle` so recipients can switch between PPT and adaptive browsing;
+- restore runtime accordion buttons/content wrappers to their original headings and child order before serialization; the standalone page must create fresh accordion handlers on load rather than retaining DOM state without its event listeners;
+- inline local stylesheets, scripts, images, `srcset` fallbacks, SVG image references, CSS `url(...)` assets, and inline-style background assets;
 - preserve single-page section navigation items and the selected navigation style;
 - preserve inline global variables and independent element styles;
 - preserve user-replaced image data URLs without requiring any additional asset fetch;
@@ -111,6 +112,6 @@ Browser-downloaded HTML filenames use the first visible report/cover H1. Replace
 ## Click-Triggered Export
 
 - Both modes show a local-preview-service hint in the drawer. When the report is opened as `file://`, every export action opens an explanatory prompt and the HTML-export modal remains closed.
-- Both modes use an HTML-export modal outside the drawer after the local-preview-service check. `保留编辑` exports the editor entry point; `仅查看` removes it. PPT footer uses `HTML / PDF / PPTX`; single-page footer uses `HTML / 图片 / PDF`; every format is created only after the user clicks a button in the local preview service.
+- Both modes use an HTML-export modal outside the drawer after the local-preview-service check. `保留编辑` retains the editor entry point; `仅查看` removes editor controls. PPT view-only output keeps a standalone PPT/adaptive browse toggle. PPT footer uses `HTML / PDF / PPTX`; single-page footer uses `HTML / 图片 / PDF`; every format is created only after the user clicks a button in the local preview service.
 - `scripts/start_html_report_preview.mjs <report-dir> <port>` exposes `POST /api/export`, accepting `{mode, format, html, title}`. It receives an edited DOM snapshot, creates the requested file in `exports/`, and returns a download URL.
 - When opened with `file://`, do not export or use browser print as a fallback. Explain that the report must be opened through the localhost preview URL before exporting any format.

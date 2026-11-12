@@ -8,10 +8,12 @@ import base64
 import json
 import mimetypes
 import re
+import subprocess
 import tempfile
 from xml.etree import ElementTree
 from html import unescape
 from pathlib import Path
+from urllib.parse import unquote_to_bytes
 
 from PIL import Image
 from pptx import Presentation
@@ -19,11 +21,10 @@ from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches, Pt
-from playwright.sync_api import sync_playwright
 
 
 SLIDE_W = 1440
@@ -87,7 +88,9 @@ def data_uri(path: Path) -> str:
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
 
 
-def inline_local_refs(html_path: Path, out_path: Path) -> None:
+def inline_local_refs(html_path: Path, out_path: Path, html_mode: str = "editable") -> None:
+    if html_mode not in {"editable", "view"}:
+        raise ValueError("html_mode must be 'editable' or 'view'")
     root = html_path.parent
     html = html_path.read_text(encoding="utf-8")
 
@@ -141,7 +144,8 @@ def inline_local_refs(html_path: Path, out_path: Path) -> None:
         image_path = (root / src).resolve()
         if not image_path.exists() or not image_path.is_file():
             return match.group(0)
-        return match.group(0).replace(src, data_uri(image_path), 1)
+        tag = match.group(0).replace(src, data_uri(image_path), 1)
+        return re.sub(r'\s(?:srcset|sizes)=["\'][^"\']*["\']', "", tag, flags=re.I)
 
     html = re.sub(
         r'<img\b[^>]*\bsrc=["\'](?P<src>[^"\']+)["\'][^>]*>',
@@ -149,7 +153,40 @@ def inline_local_refs(html_path: Path, out_path: Path) -> None:
         html,
         flags=re.I,
     )
-    html = sanitize_standalone_html(html)
+
+    def replace_picture(match: re.Match[str]) -> str:
+        return re.sub(r'<source\b[^>]*\bsrcset=["\'][^"\']+["\'][^>]*>', "", match.group(0), flags=re.I)
+
+    html = re.sub(r'<picture\b[^>]*>[\s\S]*?</picture>', replace_picture, html, flags=re.I)
+
+    def replace_svg_image(match: re.Match[str]) -> str:
+        src = match.group("src")
+        if src.startswith(("http://", "https://", "data:")):
+            return match.group(0)
+        image_path = (root / src).resolve()
+        if not image_path.exists() or not image_path.is_file():
+            return match.group(0)
+        return match.group(0).replace(src, data_uri(image_path), 1)
+
+    html = re.sub(
+        r'<image\b[^>]*\b(?:href|xlink:href)=["\'](?P<src>[^"\']+)["\'][^>]*>',
+        replace_svg_image,
+        html,
+        flags=re.I,
+    )
+
+    def replace_style_attribute(match: re.Match[str]) -> str:
+        quote = match.group("quote")
+        css = inline_css_urls(match.group("css"), root)
+        return f"style={quote}{css}{quote}"
+
+    html = re.sub(
+        r'style=(?P<quote>["\'])(?P<css>.*?)(?P=quote)',
+        replace_style_attribute,
+        html,
+        flags=re.I | re.S,
+    )
+    html = sanitize_standalone_html(html, preserve_editing=html_mode == "editable")
 
     asset_refs = sorted(
         set(re.findall(r'(?<!data:)(?:assets|data|images|media)/[A-Za-z0-9_./\-\u4e00-\u9fff]+(?:\.(?:svg|png|jpg|jpeg|webp|ico|json|js))', html)),
@@ -172,8 +209,8 @@ def inline_local_refs(html_path: Path, out_path: Path) -> None:
     out_path.write_text(html, encoding="utf-8")
 
 
-def remove_class_tokens(match: re.Match[str], tokens: set[str]) -> str:
-    tag = match.group(0)
+def remove_class_tokens(match: re.Match[str] | str, tokens: set[str]) -> str:
+    tag = match if isinstance(match, str) else match.group(0)
     class_match = re.search(r'class=["\']([^"\']*)["\']', tag)
     if not class_match:
         return tag
@@ -230,6 +267,38 @@ def hide_standalone_drawer_controls(html: str) -> str:
     return html
 
 
+def show_standalone_drawer_controls(html: str) -> str:
+    def restore_control(match: re.Match[str]) -> str:
+        tag = re.sub(r"\s+hidden(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?", "", match.group(0), flags=re.I)
+        tag = re.sub(r"\s+aria-hidden\s*=\s*(?:\"(?:true|false)\"|'(?:true|false)'|(?:true|false))", "", tag, flags=re.I)
+
+        def restore_style(style_match: re.Match[str]) -> str:
+            quote = style_match.group("quote")
+            declarations = re.sub(
+                r"(?:^|;)\s*display\s*:\s*none\s*(?=;|$)",
+                "",
+                style_match.group("style"),
+                flags=re.I,
+            )
+            declarations = re.sub(r";{2,}", ";", declarations).strip(" ;")
+            return f" style={quote}{declarations}{quote}" if declarations else ""
+
+        return re.sub(
+            r"\s+style=(?P<quote>[\"'])(?P<style>.*?)(?P=quote)",
+            restore_style,
+            tag,
+            count=1,
+            flags=re.I | re.S,
+        )
+
+    for pattern in (
+        r'<button\b[^>]*\bid=["\']drawerToggle["\'][^>]*>',
+        r'<aside\b[^>]*\bid=["\']styleDrawer["\'][^>]*>',
+    ):
+        html = re.sub(pattern, restore_control, html, count=1, flags=re.I)
+    return html
+
+
 def standalone_nav_style(html: str) -> str:
     body_match = re.search(r"<body\b([^>]*)>", html, flags=re.I)
     classes = body_match.group(1) if body_match else ""
@@ -240,7 +309,69 @@ def standalone_nav_style(html: str) -> str:
     return "numbered"
 
 
-def sanitize_standalone_html(html: str) -> str:
+def matching_div_close(markup: str, opening_start: int) -> re.Match[str] | None:
+    depth = 0
+    tokens = re.compile(r"<div\b[^>]*>|</div\s*>", flags=re.I)
+    for token in tokens.finditer(markup, opening_start):
+        value = token.group(0)
+        if value.lower().startswith("</div"):
+            depth -= 1
+            if depth == 0:
+                return token
+        elif not re.search(r"/\s*>$", value):
+            depth += 1
+    return None
+
+
+def restore_runtime_accordion_markup(html: str) -> str:
+    group_pattern = re.compile(
+        r'<div\b(?=[^>]*\bclass=["\'][^"\']*\bcontrol-group\b[^"\']*["\'])'
+        r'(?=[^>]*\bdata-accordion-initialized=["\']true["\'])[^>]*>',
+        flags=re.I,
+    )
+    search_from = 0
+    while (group_match := group_pattern.search(html, search_from)) is not None:
+        group_close = matching_div_close(html, group_match.start())
+        if group_close is None:
+            break
+        group_html = html[group_match.start() : group_close.end()]
+        toggle = re.search(
+            r'<button\b(?=[^>]*\bclass=["\'][^"\']*\bcontrol-group-toggle\b[^"\']*["\'])[^>]*>([\s\S]*?)</button\s*>',
+            group_html,
+            flags=re.I,
+        )
+        content = re.search(
+            r'<div\b(?=[^>]*\bclass=["\'][^"\']*\bcontrol-group-content\b[^"\']*["\'])[^>]*>',
+            group_html,
+            flags=re.I,
+        )
+        content_close = matching_div_close(group_html, content.start()) if content else None
+        if not toggle or not content or not content_close:
+            search_from = group_close.end()
+            continue
+
+        group_open = re.sub(
+            r'\s+data-accordion-initialized\s*=\s*(["\'])true\1',
+            "",
+            group_match.group(0),
+            flags=re.I,
+        )
+        group_open = remove_class_tokens(group_open, {"is-open"})
+        inner_content = group_html[content.end() : content_close.start()]
+        outer_close_start = group_close.start() - group_match.start()
+        restored_group = (
+            group_open
+            + f"<h4>{toggle.group(1)}</h4>"
+            + inner_content
+            + group_html[content_close.end() : outer_close_start]
+            + group_close.group(0)
+        )
+        html = html[: group_match.start()] + restored_group + html[group_close.end() :]
+        search_from = group_match.start()
+    return html
+
+
+def sanitize_standalone_html(html: str, preserve_editing: bool = True) -> str:
     html_close = html.lower().find("</html>")
     if html_close >= 0:
         html = html[: html_close + len("</html>")]
@@ -257,13 +388,13 @@ def sanitize_standalone_html(html: str) -> str:
         html,
         flags=re.I,
     )
-    html = re.sub(
-        r'<body\b[^>]*>',
-        lambda match: add_class_token_to_tag(remove_class_tokens(match, {"drawer-open", "edit-mode"}), "standalone-export"),
-        html,
-        count=1,
-        flags=re.I,
-    )
+    def clean_body(match: re.Match[str]) -> str:
+        body = remove_class_tokens(match, {"drawer-open", "edit-mode", "standalone-export"})
+        return body if preserve_editing else add_class_token_to_tag(body, "standalone-export")
+
+    html = re.sub(r'<body\b[^>]*>', clean_body, html, count=1, flags=re.I)
+    if preserve_editing:
+        html = restore_runtime_accordion_markup(html)
     html = re.sub(
         r'<aside\b[^>]*\bid=["\']styleDrawer["\'][^>]*>',
         lambda match: remove_class_tokens(match, {"open"}),
@@ -271,7 +402,7 @@ def sanitize_standalone_html(html: str) -> str:
         count=1,
         flags=re.I,
     )
-    html = hide_standalone_drawer_controls(html)
+    html = show_standalone_drawer_controls(html) if preserve_editing else hide_standalone_drawer_controls(html)
     html = re.sub(r'\scontenteditable(?:=["\'][^"\']*["\'])?', "", html, flags=re.I)
     html = re.sub(r'\sdata-typography-label=["\'][^"\']*["\']', "", html, flags=re.I)
     for token in ("selected-box", "selected-col"):
@@ -381,6 +512,8 @@ def extract_deck_json(html_path: Path, explicit_json: str | None = None, executa
             "PPT-mode HTML generated by html-report with structured JSON."
         )
     if "syncDeckJsonFromDom" in html:
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             kwargs = {"headless": True}
             if executable:
@@ -573,6 +706,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
     for c, heading in enumerate(columns):
         cell = table.cell(0, c)
         cell.text = str(heading)
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         cell.fill.solid()
         cell.fill.fore_color.rgb = parse_color(header_style.get("fill", obj.get("headerFill")), "#172033")
         cell.margin_left = Pt(cell_padding)
@@ -580,6 +714,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         cell.margin_top = Pt(cell_padding)
         cell.margin_bottom = Pt(cell_padding)
         for paragraph in cell.text_frame.paragraphs:
+            paragraph.alignment = PP_ALIGN.CENTER
             for run in paragraph.runs:
                 set_run_font(
                     run,
@@ -592,6 +727,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
         for c, value in enumerate(row[: len(columns)]):
             cell = table.cell(r, c)
             cell.text = str(value)
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
             cell.fill.solid()
             cell.fill.fore_color.rgb = parse_color(body_style.get("fill", "#f8fafc" if r % 2 == 0 else "#ffffff"))
             cell.margin_left = Pt(cell_padding)
@@ -599,6 +735,7 @@ def add_table(slide, obj: dict, meta: dict, prs: Presentation) -> None:
             cell.margin_top = Pt(cell_padding)
             cell.margin_bottom = Pt(cell_padding)
             for paragraph in cell.text_frame.paragraphs:
+                paragraph.alignment = PP_ALIGN.CENTER
                 for run in paragraph.runs:
                     set_run_font(
                         run,
@@ -754,16 +891,32 @@ def add_image(slide, obj: dict, meta: dict, prs: Presentation, root: Path) -> No
     left, top, width, height = object_position(obj, meta, prs)
     if str(src).startswith("data:image/"):
         header, encoded = str(src).split(",", 1)
-        suffix = ".png" if "png" in header else ".jpg"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
-            handle.write(base64.b64decode(encoded))
-            image_path = Path(handle.name)
+        is_svg = "svg" in header.lower()
+        payload = base64.b64decode(encoded) if ";base64" in header.lower() else unquote_to_bytes(encoded)
+        source_suffix = ".svg" if is_svg else (".png" if "png" in header.lower() else ".jpg")
+        with tempfile.NamedTemporaryFile(suffix=source_suffix, delete=False) as handle:
+            handle.write(payload)
+            source_path = Path(handle.name)
+        image_path = source_path
+        raster_path = None
         try:
+            if is_svg:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+                    raster_path = Path(handle.name)
+                subprocess.run(
+                    ["/usr/bin/sips", "--setProperty", "format", "png", str(source_path), "--out", str(raster_path)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                )
+                image_path = raster_path
             picture = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
             picture.name = obj.get("name", "image")
             crop_picture_to_frame(picture, image_path)
         finally:
-            image_path.unlink(missing_ok=True)
+            source_path.unlink(missing_ok=True)
+            if raster_path is not None:
+                raster_path.unlink(missing_ok=True)
         return
     image_path = (root / src).resolve()
     if not image_path.exists():
@@ -824,6 +977,8 @@ def chrome_path(explicit: str | None) -> str | None:
 
 
 def capture_slides(html_path: Path, shot_dir: Path, executable: str | None) -> list[Path]:
+    from playwright.sync_api import sync_playwright
+
     with sync_playwright() as p:
         kwargs = {"headless": True}
         if executable:
@@ -867,6 +1022,12 @@ def main() -> int:
     parser.add_argument("html", help="Source index.html")
     parser.add_argument("--out-dir", default=None, help="Export directory")
     parser.add_argument("--formats", default=None, help="Comma list: html,pdf,pptx")
+    parser.add_argument(
+        "--html-mode",
+        choices=("editable", "view"),
+        default="editable",
+        help="Standalone HTML mode: editable (default) or view-only",
+    )
     parser.add_argument("--chrome-path", default=None, help="Optional Chrome/Chromium executable")
     parser.add_argument("--deck-json", default=None, help="Optional structured JSON file for editable PPTX")
     args = parser.parse_args()
@@ -890,7 +1051,7 @@ def main() -> int:
     outputs: list[Path] = []
     if "html" in formats:
         single = out_dir / f"{html_path.stem}_single.html"
-        inline_local_refs(html_path, single)
+        inline_local_refs(html_path, single, html_mode=args.html_mode)
         outputs.append(single)
 
     if "pdf" in formats:

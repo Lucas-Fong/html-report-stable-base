@@ -1,0 +1,22 @@
+{
+  "mode": "ppt",
+  "title": "自适应窄屏溢出验收",
+  "requiresEcharts": false,
+  "slides": [
+    {
+      "title": "超长标题与三列卡片",
+      "html": "<div class=\"inner\" style=\"width:100%;max-width:1328px;margin:0 auto;display:flex;flex-direction:column;gap:18px\"><h1 class=\"editable\" data-editable-element=\"text\" style=\"font-size:48px;white-space:nowrap\">示例集团 Token 工厂跨境交付能力分析</h1><p>浏览模式需要支持稳定专属算力与 <span style=\"white-space:nowrap\">TokenHubSuperLongEnterpriseDeliveryLabel</span>，窄屏下标题和词组应换行。</p><div class=\"grid cols-3\"><article class=\"panel\"><h3>跨境 Token 供给</h3><p>东盟区域项目交付、算力资源与服务网络的组合能力。</p></article><article class=\"panel\"><h3>模型接入与路由</h3><p>长标签 TokenHubSuperLongEnterpriseDeliveryLabel 应在窄屏下自然换行。</p></article><article class=\"panel\"><h3>运营交付</h3><p>按业务场景评估 SLA、成本、并发与交付证据。</p></article></div></div>",
+      "objects": []
+    },
+    {
+      "title": "双列内容与长句",
+      "html": "<div class=\"inner\" style=\"width:100%;max-width:1328px;margin:0 auto;display:flex;flex-direction:column;gap:18px\"><h1 class=\"editable\" data-editable-element=\"text\" style=\"font-size:48px;white-space:nowrap\">AI 安全产品能力与适配边界</h1><div class=\"grid cols-2\"><article class=\"panel\"><h3>优势场景</h3><p>在漏洞验证、大模型专项评测、红队演练与持续自动化运营中，需结合任务目标识别产品能力与原答依据。</p></article><article class=\"panel\"><h3>材料边界</h3><p>品牌与产品信息需要可核验；无法定位主体时应明确标为信息缺失，不把推测写成产品事实。</p></article></div></div>",
+      "objects": []
+    },
+    {
+      "title": "表格宽度与导航安全区",
+      "html": "<div class=\"inner\" style=\"width:100%;max-width:1328px;margin:0 auto;display:flex;flex-direction:column;gap:18px\"><h1 class=\"editable\" data-editable-element=\"text\" style=\"font-size:48px;white-space:nowrap\">信源类型分析与传播建议</h1><table><thead><tr><th>来源类型</th><th>认知贡献</th><th>后续动作</th></tr></thead><tbody><tr><td>官方内容</td><td>帮助模型建立品牌和产品事实。</td><td>补齐可核验页面与产品证据。</td></tr><tr><td>第三方内容</td><td>支撑行业比较与应用场景认知。</td><td>完善案例、交付和安全验证材料。</td></tr></tbody></table></div>",
+      "objects": []
+    }
+  ]
+}

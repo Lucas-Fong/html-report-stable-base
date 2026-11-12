@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from pptx import Presentation
+from export_html_report import restore_runtime_accordion_markup
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,8 +64,8 @@ def test_single_page_contract() -> None:
                 "mode": "single-page",
                 "title": "Long report",
                 "sections": [
-                    {"id": "intro", "title": "超过六个字的章节标题", "html": '<h1 data-editable-element="text">Intro</h1>'},
-                    {"id": "data", "title": "数据", "html": '<p data-editable-element="text">Body</p>'},
+                    {"id": "intro", "chapter": "业务概览", "title": "超过六个字的章节标题", "html": '<h1 data-editable-element="text">Intro</h1>'},
+                    {"id": "data", "chapter": "经营洞察", "title": "数据", "html": '<p data-editable-element="text">Body</p>'},
                 ],
             },
             SINGLE_TEMPLATE,
@@ -76,26 +78,39 @@ def test_single_page_contract() -> None:
         assert_true('id="exportPpt"' not in html and 'id="printPdf"' not in html, "single-page output must not expose PPT/PDF controls")
         assert_true('id="nav"' not in html, "single-page output must not contain PPT navigation")
         assert_true('id="sectionNav"' in html, "single-page output must expose section navigation")
-        assert_true('id="sectionNavStyleControl"' in html, "single-page drawer must expose section navigation controls")
-        for style in ("hidden", "left", "right"):
-            assert_true(f'data-section-nav-style="{style}"' in html, f"single-page navigation must support {style}")
-        assert_true('class="single-page-mode section-nav-right"' in html, "single-page navigation must default to right")
+        assert_true('<select id="sectionNavStyleControl"' in html and '<select id="sectionNavSideControl"' in html, "single-page drawer must expose separate navigation-mode and position selectors")
+        assert_true('data-chapter="业务概览"' in html and 'data-chapter="经营洞察"' in html, "single-page sections must preserve optional chapter grouping metadata")
+        for mode in ("hidden", "top", "embedded", "floating", "dots"):
+            assert_true(f'<option value="{mode}"' in html, f"single-page navigation must support {mode} mode")
+        for side in ("left", "right"):
+            assert_true(f'<option value="{side}"' in html, f"single-page navigation must support {side} positioning")
+        assert_true('class="single-page-mode section-nav-top section-nav-side-left"' in html, "single-page navigation must default to top left")
         assert_true('id="downloadHtml"' in html, "single-page output must keep standalone HTML export")
         assert_true('<script src="shared/report-editor.js"' not in html, "generated output must inline the shared editor")
         checked = subprocess.run([sys.executable, str(CHECKER), str(output)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         assert_true(checked.returncode == 0, checked.stderr or checked.stdout)
+        invalid_navigation = Path(tmp) / "missing-navigation-mode.html"
+        invalid_navigation.write_text(html.replace('<option value="dots"', '<option value="missing"', 1), encoding="utf-8")
+        invalid_checked = subprocess.run([sys.executable, str(CHECKER), str(invalid_navigation)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        assert_true(invalid_checked.returncode != 0 and "navigation" in (invalid_checked.stdout + invalid_checked.stderr).lower(), "static checker must reject a single-page report missing a supported navigation mode")
         rejected = subprocess.run([sys.executable, str(EXPORTER), str(output), "--formats", "pptx"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         assert_true(rejected.returncode != 0 and "only supports" in (rejected.stdout + rejected.stderr), "single-page mode must reject PPTX export")
 
 
-def test_single_page_nav_is_readable_and_theme_bound() -> None:
+def test_single_page_nav_is_full_width_and_supports_all_presentations() -> None:
     html = SINGLE_TEMPLATE.read_text(encoding="utf-8")
-    assert_true("--section-nav-width: 112px;" in html, "single-page nav must use a readable five-to-six-character side index width")
-    assert_true("body.section-nav-right .report" in html, "single-page nav must reserve enough room to avoid covering the report")
-    assert_true("body.drawer-open.section-nav-right .section-nav { right: calc(var(--drawer-width) + 16px); }" in html, "right nav must sit beside the drawer")
-    assert_true("body.section-nav-right .section-nav { display: grid; gap: 6px; right: 16px; }" in html, "right nav must use normal side-card spacing")
+    assert_true(".report { width: 100%; max-width: none;" in html, "single-page reports must use the available page width")
+    assert_true("--section-nav-width: 156px;" in html and "--section-nav-floating-width: 112px;" in html and "--section-nav-gutter: 16px;" in html, "embedded and floating navigation must use distinct compact reading widths")
+    assert_true("body.section-nav-embedded-left .report" in html and "body.section-nav-embedded-right .report" in html, "embedded navigation must reserve a left or right report column")
+    assert_true("body.section-nav-top .section-nav {\n      display: block;" in html and "body.section-nav-top.section-nav-side-right .section-nav-panel" in html and "body.drawer-open.section-nav-top .section-nav" in html, "top navigation must be visible, support both alignments, and avoid the open drawer")
+    assert_true("body.section-nav-floating-left .section-nav" in html and "body.section-nav-floating-right .section-nav" in html, "floating navigation must support both sides")
+    assert_true("body.section-nav-dots-left .section-nav" in html and "body.section-nav-dots-right .section-nav" in html, "dot navigation must support both sides")
+    assert_true(".section-nav-collapse" in html and "section-nav-collapsed" in html, "embedded navigation must expose a collapsible control")
+    assert_true(".section-nav-chapter-link" in html, "section navigation must render one concise link per chapter")
+    assert_true("body.drawer-open.section-nav-embedded-right .section-nav" in html, "right embedded navigation must avoid the open drawer")
     assert_true(".section-nav {\n      position: fixed;" in html and "background: color-mix(in srgb, var(--paper) 92%, transparent);" in html, "single-page nav container must use a normal theme-bound card background")
     assert_true(".section-nav a" in html and "border-radius: 6px;" in html and "font: 12px/1.35 Arial, sans-serif;" in html, "single-page nav items must use normal readable rows")
+    assert_true("width: 18px;" in html and "height: 18px;" in html, "dot navigation must use restrained compact targets")
     assert_true(".section-nav a.active { background: color-mix(in srgb, var(--accent) 12%, var(--paper)); color: var(--accent);" in html, "active nav state must follow accent color")
     assert_true(".demo-chart { width: 100%; max-width: 100%;" in html and "overflow: hidden;" in html, "single-page charts must stay inside the report column")
     assert_true(".style-drawer { position: fixed;" in html and "background: color-mix(in srgb, var(--paper) 96%, var(--surface));" in html, "drawer must follow report theme")
@@ -118,6 +133,85 @@ def test_single_page_demo_fixture_builds() -> None:
         assert_true("HTML Builder Single Page Demo" in html, "demo fixture must keep the presentation title")
         assert_true("Aurora Air AI 可见度月报" in html, "demo fixture must include the demo report content")
         assert_true(html.count('data-editable-element="chart"') >= 2, "demo fixture must include editable charts")
+
+
+def test_standalone_html_export_respects_editable_or_view_mode() -> None:
+    editor_source = EDITOR_JS.read_text(encoding="utf-8")
+    ppt_source = PPT_TEMPLATE.read_text(encoding="utf-8")
+    assert_true("restoreAccordionMarkupForStandalone" in editor_source, "standalone editor export must restore serializable accordion markup before reload")
+    assert_true("restoreAccordionMarkupForStandalone?.(clone)" in ppt_source, "PPT HTML export must reinitialize drawer accordions in the standalone file")
+    runtime_accordion = (
+        '<div class="control-group is-open" data-drawer-intent="navigation" data-accordion-initialized="true">'
+        '<button type="button" class="control-group-toggle" aria-expanded="true">浏览与模式</button>'
+        '<div class="control-group-content" hidden><button id="modeToggle">PPT模式</button></div></div>'
+    )
+    restored_accordion = restore_runtime_accordion_markup(runtime_accordion)
+    assert_true("<h4>浏览与模式</h4><button id=\"modeToggle\">PPT模式</button>" in restored_accordion, "CLI standalone export must restore accordion child order and heading markup")
+    assert_true("control-group-toggle" not in restored_accordion and "data-accordion-initialized" not in restored_accordion and "is-open" not in restored_accordion, "CLI standalone export must remove dead runtime accordion state")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        source = tmp_path / "index.html"
+        result = run_builder(
+            {
+                "mode": "ppt",
+                "title": "Export mode fixture",
+                "slides": [{"title": "Cover", "html": '<h1 class="editable" data-editable-element="text" data-pptx-name="cover">Export test</h1>', "objects": []}],
+            },
+            PPT_TEMPLATE,
+            source,
+        )
+        assert_true(result.returncode == 0, result.stderr or result.stdout)
+
+        for export_mode, cli_mode, editor_expected in (("default", None, True), ("editable", "editable", True), ("view", "view", False)):
+            out_dir = tmp_path / export_mode
+            command = [
+                sys.executable,
+                str(EXPORTER),
+                str(source),
+                "--out-dir",
+                str(out_dir),
+                "--formats",
+                "html",
+            ]
+            if cli_mode:
+                command.extend(["--html-mode", cli_mode])
+            exported = subprocess.run(
+                command,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            assert_true(exported.returncode == 0, exported.stderr or exported.stdout)
+            output_path = out_dir / "index_single.html"
+            assert_true(output_path.exists(), f"{export_mode} HTML export must be written")
+            html = output_path.read_text(encoding="utf-8")
+            body = re.search(r"<body\b[^>]*>", html, flags=re.I)
+            drawer = re.search(r"<aside\b[^>]*\bid=['\"]styleDrawer['\"][^>]*>", html, flags=re.I)
+            toggle = re.search(r"<button\b[^>]*\bid=['\"]drawerToggle['\"][^>]*>", html, flags=re.I)
+            browse_toggle = re.search(r"<button\b[^>]*\bid=['\"]standaloneBrowseToggle['\"][^>]*>", html, flags=re.I)
+            assert_true(body and drawer and toggle and browse_toggle, "standalone export must retain editor and browse-mode controls in its document")
+            assert_true("body.standalone-export .standalone-browse-toggle { display: grid; }" in html, "PPT standalone export must expose the separate read-only browse-mode control")
+            has_standalone_view_class = bool(re.search(r"class=['\"][^'\"]*\bstandalone-export\b", body.group(0), flags=re.I))
+            controls_hidden = any(
+                re.search(r"(?:^|\s)hidden(?:=|\s|>)", tag, flags=re.I)
+                or re.search(r"display\s*:\s*none", tag, flags=re.I)
+                for tag in (drawer.group(0), toggle.group(0))
+            )
+            assert_true(
+                has_standalone_view_class is (not editor_expected) and controls_hidden is (not editor_expected),
+                f"{export_mode} export must {'keep' if editor_expected else 'hide'} editor controls",
+            )
+
+
+def test_ppt_adaptive_has_narrow_layout_and_view_toggle_contract() -> None:
+    html = PPT_TEMPLATE.read_text(encoding="utf-8")
+    assert_true("@media (max-width: 820px)" in html, "PPT adaptive mode must define a narrow viewport layout")
+    assert_true("body.adaptive-mode .deck" in html and "padding-right: 64px;" in html, "narrow adaptive mode must reserve the right-side navigation rail")
+    assert_true("overflow-wrap: anywhere !important;" in html, "narrow adaptive mode must wrap long labels and headings")
+    assert_true("grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)) !important;" in html, "narrow adaptive mode must reflow multi-column grids")
+    assert_true('id="standaloneBrowseToggle"' in html and "body.standalone-export .standalone-browse-toggle { display: grid; }" in html, "view-only PPT HTML must expose its browse-mode toggle")
+    assert_true("let mode = document.body.classList.contains('adaptive-mode') ? 'adaptive' : 'ppt';" in html, "standalone PPT HTML must initialize the mode toggle from the exported active mode")
 
 
 def test_ppt_contract_remains_available() -> None:
@@ -319,11 +413,12 @@ def test_shared_editor_contract() -> None:
     assert_true("selectedElement" in source, "editor must maintain exactly one current element selection")
     assert_true("getInstanceByDom" in source and ".resize()" in source, "chart size changes must resize ECharts")
     assert_true("currentStageScale" in source, "PPT element dimensions must convert through the current stage scale")
-    for contract in ("setSectionNavStyle", "buildSectionNav", "shortSectionTitle", "typographyLevel", "refreshTypographyLabels"):
+    for contract in ("setSectionNavStyle", "setSectionNavPresentation", "buildSectionNav", "shortSectionTitle"):
         assert_true(contract in source, f"shared editor must expose {contract}")
-    assert_true("Array.from(String(title" in source and ".slice(0, 6)" in source, "single-page section nav labels must truncate by Unicode characters")
-    for style in ("hidden", "left", "right"):
+    assert_true("Array.from(String(title" in source and ".slice(0, 5)" in source, "single-page section nav labels must truncate to five Unicode characters")
+    for style in ("hidden", "top", "embedded-left", "embedded-right", "floating-left", "floating-right", "dots-left", "dots-right"):
         assert_true(f"'{style}'" in source, f"single-page nav logic must support {style}")
+    assert_true("setSectionNavCollapsed" in source and "section-nav-chapter-link" in source and "sectionNavChapter" in source, "single-page nav must support collapsible embedded menus and chapter-only links")
     assert_true("window.syncDeckJsonFromDom?.();" in source, "instant PDF/PPTX export snapshots must sync PPT DOM changes first")
     assert_true("function prettyJsonForEditor(value)" in source, "chart JSON editor must format stored payloads")
     assert_true("if (stored) editor.value = prettyJsonForEditor(stored);" in source, "stored chart data must open as vertical JSON")
@@ -373,21 +468,16 @@ def test_ppt_drawer_accordion_groups_do_not_stretch() -> None:
     assert_true("align-self: start" in ppt, "PPT drawer control groups must stay compact")
 
 
-def test_metric_typography_is_a_seventh_global_level() -> None:
+def test_global_size_controls_and_typography_badges_are_absent() -> None:
     single = SINGLE_TEMPLATE.read_text(encoding="utf-8")
     ppt = PPT_TEMPLATE.read_text(encoding="utf-8")
     for name, html in (("single-page", single), ("ppt", ppt)):
-        assert_true("--metric-size:" in html, f"{name} template must define the metric typography level")
-        assert_true('data-global-var="--metric-size"' in html, f"{name} drawer must expose metric size")
-        assert_true("指标字号" in html, f"{name} drawer must name the metric size control")
-        assert_true(".metric .value" in html and "font-size: var(--metric-size)" in html, f"{name} metric values must use metric size")
-        assert_true(".metric .label" in html and "font-size: var(--body-size)" in html, f"{name} metric labels must remain body text")
-    for level in ("'L1'", "'L2'", "'L3'", "'L4'", "'指标'", "'正文'", "'备注'"):
-        assert_true(level in EDITOR_JS.read_text(encoding="utf-8"), f"single-page typography labels must include {level}")
-    assert_true(".typography-label" in single, "single-page template must include visible typography labels")
-    assert_true("element.matches('[data-ppt-level=\"metric\"], .metric .value, .metric strong')" in ppt, "PPT typography classification must only recognize metric values")
-    assert_true("return '指标'" in ppt, "PPT edit labels must display the metric typography level")
-    assert_true("obj.pptLevel = 'metric'" in ppt, "PPT DOM sync must export metric-card text as metric typography")
+        for global_var, label in (("--metric-size", "指标字号"), ("--body-size", "正文字号"), ("--note-size", "备注字号")):
+            assert_true(f'data-global-var="{global_var}"' not in html and f'<span>{label}</span>' not in html, f"{name} drawer must not expose global metric, body, or note font controls")
+        assert_true(".typography-label" not in html, f"{name} template must not render typography badges")
+        assert_true("typographyLabelForElement" not in html, f"{name} template must not classify typography levels for corner badges")
+    shared_editor = EDITOR_JS.read_text(encoding="utf-8")
+    assert_true("typographyLabelPosition" not in shared_editor, "shared editor must not retain typography badge positioning")
 
 
 def test_plugin_bundles_chart_and_word_cloud_skills() -> None:
@@ -456,8 +546,10 @@ def main() -> int:
     tests = [
         test_mode_is_required,
         test_single_page_contract,
-        test_single_page_nav_is_readable_and_theme_bound,
+        test_single_page_nav_is_full_width_and_supports_all_presentations,
         test_single_page_demo_fixture_builds,
+        test_standalone_html_export_respects_editable_or_view_mode,
+        test_ppt_adaptive_has_narrow_layout_and_view_toggle_contract,
         test_ppt_contract_remains_available,
         test_ppt_builder_omits_echarts_only_for_explicit_chart_free_model,
         test_ppt_export_syncs_missing_named_dom_objects,
@@ -466,7 +558,7 @@ def main() -> int:
         test_preview_service_reuses_browser_for_exports,
         test_shared_accordion_contract,
         test_ppt_drawer_accordion_groups_do_not_stretch,
-        test_metric_typography_is_a_seventh_global_level,
+        test_global_size_controls_and_typography_badges_are_absent,
         test_plugin_bundles_chart_and_word_cloud_skills,
         test_canonical_skill_and_plugin_names,
         test_plugin_report_wrapper_has_a_compact_display_name,

@@ -384,25 +384,12 @@ body.edit-mode .recognition-candidate {
 
 .danger-btn:hover { background: #fee4e2 !important; }
 
-body.global-typography-active [data-ppt-level="h1"],
-body.global-typography-active main h1 { font-size: var(--h1-size) !important; }
-body.global-typography-active [data-ppt-level="h2"],
-body.global-typography-active main h2 { font-size: var(--h2-size) !important; }
-body.global-typography-active [data-ppt-level="h3"],
-body.global-typography-active main h3 { font-size: var(--h3-size) !important; }
-body.global-typography-active [data-ppt-level="h4"],
-body.global-typography-active main h4 { font-size: var(--h4-size) !important; }
-body.global-typography-active [data-ppt-level="metric"],
-body.global-typography-active .metric .value,
-body.global-typography-active .metric strong { font-size: var(--metric-size) !important; }
-body.global-typography-active [data-ppt-level="note"],
-body.global-typography-active .note { font-size: var(--note-size) !important; }
 body.global-typography-active main p,
 body.global-typography-active main li,
 body.global-typography-active main td,
 body.global-typography-active main th,
 body.global-typography-active [data-ppt-level="body"],
-body.global-typography-active .body-text { font-size: var(--body-size) !important; line-height: var(--body-line-height) !important; }
+body.global-typography-active .body-text { line-height: var(--body-line-height) !important; }
 body.global-font-active [data-editable-element] { font-family: var(--font-family) !important; }
 
 .element-empty-state {

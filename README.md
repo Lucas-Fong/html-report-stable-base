@@ -10,7 +10,7 @@ Codex skill for building stable, editable HTML reports from supplied content or 
 
 ![Single-page editable report shell](assets/examples/single-page-example.svg)
 
-Use `single-page` when the report should read as a long, vertically scrolling page with section navigation, responsive width, auto height, and `HTML / 图片 / PDF` export.
+Use `single-page` when the report should read as a long, vertically scrolling full-width page with auto height and `HTML / 图片 / PDF` export. Its chapter navigation can be fixed at the top, embedded on either side and collapsed, floated on either side, or reduced to side dots.
 
 ### PPT Mode
 
